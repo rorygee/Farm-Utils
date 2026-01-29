@@ -14,7 +14,9 @@ import net.runelite.client.plugins.PluginDescriptor;
 
 @Slf4j
 @PluginDescriptor(
-	name = "Farm Utils"
+	name = "Farm Utils",
+	description = "Quality-of-life farming patch state tracker",
+	tags = {"farming", "utility", "qol"}
 )
 public class FarmutilsPlugin extends Plugin
 {
@@ -27,22 +29,19 @@ public class FarmutilsPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
-		log.debug("Example started!");
+
 	}
 
 	@Override
 	protected void shutDown() throws Exception
 	{
-		log.debug("Example stopped!");
+
 	}
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged gameStateChanged)
 	{
-		if (gameStateChanged.getGameState() == GameState.LOGGED_IN)
-		{
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "Example says " + config.greeting(), null);
-		}
+
 	}
 
 	@Provides
