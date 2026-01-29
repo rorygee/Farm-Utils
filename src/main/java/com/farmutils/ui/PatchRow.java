@@ -3,6 +3,7 @@ package com.farmutils.ui;
 import com.farmutils.model.PatchId;
 import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
+import com.farmutils.model.PatchView;
 import com.farmutils.storage.PatchStore;
 import java.awt.BorderLayout;
 import java.awt.event.MouseAdapter;
@@ -23,10 +24,11 @@ public class PatchRow extends JPanel
         setLayout(new BorderLayout());
 
         JLabel left = new JLabel(id.getGroup() + " — " + id.getLabel());
-        Optional<PatchRecord> record = store.load(id);
-        JLabel right = new JLabel(formatState(record));
+        PatchView view = store.view(id);
+        Optional<PatchRecord> record = view.getRecord();
+        JLabel right = new JLabel(formatState(view));
 
-        String tooltip = buildTooltip(record);
+        String tooltip = buildTooltip(view);
         setToolTipText(tooltip);
         right.setToolTipText(tooltip);
         left.setToolTipText(tooltip);
@@ -79,41 +81,59 @@ public class PatchRow extends JPanel
         });
     }
 
-    private static String buildTooltip(Optional<PatchRecord> record)
+    private static String buildTooltip(PatchView view)
     {
-        if (!record.isPresent())
+        if (!view.getRecord().isPresent())
         {
             return "Unknown: no record for this patch yet.";
         }
 
-        PatchState state = record.get().getState();
+        PatchState state = view.getRecord().get().getState();
+        String stateLine;
+
         switch (state)
         {
             case EMPTY:
-                return "Empty: you checked this patch and recorded nothing planted.";
+                stateLine = "Empty: you checked this patch and recorded nothing planted.";
+                break;
             case GROWING:
-                return "Growing: you recorded this patch as in progress.";
+                stateLine = "Growing: you recorded this patch as in progress.";
+                break;
             case READY:
-                return "Ready: you recorded this patch as harvestable.";
+                stateLine = "Ready: you recorded this patch as harvestable.";
+                break;
             case DEAD:
-                return "Dead: you recorded this patch as dead.";
+                stateLine = "Dead: you recorded this patch as dead.";
+                break;
             default:
-                return state.name();
+                stateLine = state.name();
+        }
+
+        // Source is calm + factual; doesn’t shout.
+        return stateLine + " Source: " + prettySource(view.getSource()) + ".";
+    }
+    private static String prettySource(com.farmutils.model.PatchSource source)
+    {
+        switch (source)
+        {
+            case MANUAL: return "Manual";
+            case INFERRED: return "Inferred";
+            case UNKNOWN: return "Unknown";
+            default: return source.name();
         }
     }
 
-    private static String formatState(Optional<PatchRecord> record)
+
+    private static String formatState(PatchView view)
     {
+        Optional<PatchRecord> record = view.getRecord();
         if (!record.isPresent())
         {
             return "Unknown";
         }
 
-        PatchRecord r = record.get();
-        long age = System.currentTimeMillis() - r.getUpdatedAtMillis();
-        boolean stale = age > STALE_MILLIS;
-
-        return pretty(r.getState()) + (stale ? " (Stale)" : "");
+        String base = pretty(record.get().getState());
+        return base + (view.isStale() ? " (Stale)" : "");
     }
 
     private static String pretty(PatchState state)

@@ -3,9 +3,12 @@ package com.farmutils.storage;
 import com.farmutils.model.PatchId;
 import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
+import com.farmutils.model.PatchSource;
 import java.util.Optional;
 import javax.inject.Inject;
 import net.runelite.client.config.ConfigManager;
+import com.farmutils.model.PatchView;
+import java.time.Duration;
 import javax.inject.Singleton;
 
 @Singleton
@@ -16,6 +19,13 @@ public class PatchStore
 
     @Inject
     private ConfigManager configManager;
+
+    private static final long STALE_MILLIS = Duration.ofDays(7).toMillis();
+
+    private static boolean isStale(PatchRecord record, long nowMillis)
+    {
+        return nowMillis - record.getUpdatedAtMillis() > STALE_MILLIS;
+    }
 
     public Optional<PatchRecord> load(PatchId id)
     {
@@ -41,6 +51,20 @@ public class PatchStore
         {
             return Optional.empty();
         }
+    }
+
+    public PatchView view(PatchId id)
+    {
+        long now = System.currentTimeMillis();
+        Optional<PatchRecord> record = load(id);
+
+        boolean stale = record.isPresent() && isStale(record.get(), now);
+
+        PatchSource source = record.isPresent()
+                ? PatchSource.MANUAL
+                : PatchSource.UNKNOWN;
+
+        return new PatchView(record, stale, source);
     }
 
     public void save(PatchId id, PatchState state)
