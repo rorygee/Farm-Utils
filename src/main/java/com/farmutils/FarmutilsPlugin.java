@@ -11,6 +11,11 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import com.farmutils.ui.FarmPanel;
+import javax.inject.Inject;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.ImageUtil;
 
 @Slf4j
 @PluginDescriptor(
@@ -21,22 +26,42 @@ import net.runelite.client.plugins.PluginDescriptor;
 public class FarmutilsPlugin extends Plugin
 {
 	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
+	private FarmPanel farmPanel;
+
+	private NavigationButton navButton;
+
+	@Inject
 	private Client client;
 
 	@Inject
 	private FarmutilsConfig config;
 
 	@Override
-	protected void startUp() throws Exception
+	protected void startUp()
 	{
+		navButton = NavigationButton.builder()
+				.tooltip("Farm Utils")
+				.icon(ImageUtil.loadImageResource(getClass(), "/icon.png"))
+				.panel(farmPanel)
+				.build();
 
+		clientToolbar.addNavigation(navButton);
+		farmPanel.rebuild();
 	}
 
 	@Override
-	protected void shutDown() throws Exception
+	protected void shutDown()
 	{
-
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+			navButton = null;
+		}
 	}
+
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged gameStateChanged)
