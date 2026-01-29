@@ -23,7 +23,13 @@ public class PatchRow extends JPanel
         setLayout(new BorderLayout());
 
         JLabel left = new JLabel(id.getGroup() + " — " + id.getLabel());
-        JLabel right = new JLabel(formatState(store.load(id)));
+        Optional<PatchRecord> record = store.load(id);
+        JLabel right = new JLabel(formatState(record));
+
+        String tooltip = buildTooltip(record);
+        setToolTipText(tooltip);
+        right.setToolTipText(tooltip);
+        left.setToolTipText(tooltip);
 
         add(left, BorderLayout.WEST);
         add(right, BorderLayout.EAST);
@@ -71,6 +77,29 @@ public class PatchRow extends JPanel
                 }
             }
         });
+    }
+
+    private static String buildTooltip(Optional<PatchRecord> record)
+    {
+        if (!record.isPresent())
+        {
+            return "Unknown: no record for this patch yet.";
+        }
+
+        PatchState state = record.get().getState();
+        switch (state)
+        {
+            case EMPTY:
+                return "Empty: you checked this patch and recorded nothing planted.";
+            case GROWING:
+                return "Growing: you recorded this patch as in progress.";
+            case READY:
+                return "Ready: you recorded this patch as harvestable.";
+            case DEAD:
+                return "Dead: you recorded this patch as dead.";
+            default:
+                return state.name();
+        }
     }
 
     private static String formatState(Optional<PatchRecord> record)
