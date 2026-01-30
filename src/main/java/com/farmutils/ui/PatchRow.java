@@ -5,15 +5,15 @@ import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
 import com.farmutils.model.PatchView;
 import com.farmutils.storage.PatchStore;
-import java.awt.BorderLayout;
+
+import javax.swing.*;
+import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
-import javax.swing.JLabel;
-import javax.swing.JMenuItem;
-import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
 
 public class PatchRow extends JPanel
 {
@@ -22,6 +22,9 @@ public class PatchRow extends JPanel
     public PatchRow(PatchId id, PatchStore store, Runnable onChange)
     {
         setLayout(new BorderLayout());
+        setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, getPreferredSize().height));
+
 
         JLabel left = new JLabel(id.getGroup() + " — " + id.getLabel());
         PatchView view = store.view(id);
@@ -79,18 +82,20 @@ public class PatchRow extends JPanel
                 }
             }
         });
+        setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, getPreferredSize().height));
     }
 
     private static String buildTooltip(PatchView view)
     {
         if (!view.getRecord().isPresent())
         {
-            return "Unknown: no record for this patch yet.";
+            return "Unknown: no record for this patch yet. Updated: Never.";
         }
 
-        PatchState state = view.getRecord().get().getState();
-        String stateLine;
+        PatchRecord record = view.getRecord().get();
+        PatchState state = record.getState();
 
+        String stateLine;
         switch (state)
         {
             case EMPTY:
@@ -109,19 +114,29 @@ public class PatchRow extends JPanel
                 stateLine = state.name();
         }
 
-        // Source is calm + factual; doesn’t shout.
-        return stateLine + " Source: " + prettySource(view.getSource()) + ".";
+        String updated = "Updated: " + timeAgo(record.getUpdatedAtMillis()) + ".";
+        String source = "Source: " + prettySource(view.getSource()) + ".";
+
+        // Keep it factual and quiet.
+        return stateLine + " " + updated + " " + source;
     }
-    private static String prettySource(com.farmutils.model.PatchSource source)
+
+    private static String timeAgo(long updatedAtMillis)
     {
-        switch (source)
-        {
-            case MANUAL: return "Manual";
-            case INFERRED: return "Inferred";
-            case UNKNOWN: return "Unknown";
-            default: return source.name();
-        }
+        Instant then = Instant.ofEpochMilli(updatedAtMillis);
+        Instant now = Instant.now();
+
+        long minutes = ChronoUnit.MINUTES.between(then, now);
+        if (minutes < 1) return "just now";
+        if (minutes < 60) return minutes + "m ago";
+
+        long hours = ChronoUnit.HOURS.between(then, now);
+        if (hours < 24) return hours + "h ago";
+
+        long days = ChronoUnit.DAYS.between(then, now);
+        return days + "d ago";
     }
+
 
 
     private static String formatState(PatchView view)
@@ -134,6 +149,21 @@ public class PatchRow extends JPanel
 
         String base = pretty(record.get().getState());
         return base + (view.isStale() ? " (Stale)" : "");
+    }
+
+    private static String prettySource(com.farmutils.model.PatchSource source)
+    {
+        switch (source)
+        {
+            case MANUAL:
+                return "Manual";
+            case INFERRED:
+                return "Inferred";
+            case UNKNOWN:
+                return "Unknown";
+            default:
+                return source.name();
+        }
     }
 
     private static String pretty(PatchState state)
