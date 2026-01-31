@@ -16,6 +16,9 @@ import javax.inject.Inject;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 
 @Slf4j
 @PluginDescriptor(
@@ -25,6 +28,8 @@ import net.runelite.client.util.ImageUtil;
 )
 public class FarmutilsPlugin extends Plugin
 {
+	@Inject private FarmutilsConfig config;
+
 	@Inject
 	private ClientToolbar clientToolbar;
 
@@ -36,9 +41,6 @@ public class FarmutilsPlugin extends Plugin
 	@Inject
 	private Client client;
 
-	@Inject
-	private FarmutilsConfig config;
-
 	@Override
 	protected void startUp()
 	{
@@ -49,7 +51,7 @@ public class FarmutilsPlugin extends Plugin
 				.build();
 
 		clientToolbar.addNavigation(navButton);
-		farmPanel.rebuild();
+		farmPanel.refreshUiFromConfig();
 	}
 
 	@Override
@@ -68,6 +70,21 @@ public class FarmutilsPlugin extends Plugin
 	{
 
 	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged e)
+	{
+		if (!"farmutils".equals(e.getGroup()))
+		{
+			return;
+		}
+
+		if (farmPanel != null)
+		{
+			farmPanel.refreshUiFromConfig();
+		}
+	}
+
 
 	@Provides
 	FarmutilsConfig provideConfig(ConfigManager configManager)

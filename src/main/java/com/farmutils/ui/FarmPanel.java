@@ -1,5 +1,6 @@
 package com.farmutils.ui;
 
+import com.farmutils.FarmutilsConfig;
 import com.farmutils.model.PatchId;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
@@ -24,27 +25,37 @@ public class FarmPanel extends PluginPanel
     private static final int PAD_X = 8;
     private static final int PAD_Y = 6;
 
-    // 1px divider color (subtle but visible)
+    // 1px divider color
     private static final Color DIVIDER = ColorScheme.DARKER_GRAY_COLOR;
 
     private static final Color HEADER_ORANGE =
             hasBrandOrange() ? ColorScheme.BRAND_ORANGE : new Color(255, 152, 31);
     private static final Color TRI_DISABLED = ColorScheme.MEDIUM_GRAY_COLOR;
 
-    @Inject private PatchStore store;
-    @Inject private UiStateStore uiStateStore;
-    @Inject private ClientUI clientUI;
+    private final PatchStore store;
+    private final UiStateStore uiStateStore;
+    private final ClientUI clientUI;
+    private final FarmutilsConfig config;
+
+    private final Font baseFilterFont;
 
     private final JPanel list = new JPanel();
     private final JTextField filterField = new JTextField();
     private String filterText = "";
 
-    private JScrollPane scroll;
     private KeyEventDispatcher keyDispatcher;
 
-    public FarmPanel()
+    @Inject
+    public FarmPanel(PatchStore store, UiStateStore uiStateStore, ClientUI clientUI, FarmutilsConfig config)
     {
         super(false);
+
+        this.store = store;
+        this.uiStateStore = uiStateStore;
+        this.clientUI = clientUI;
+        this.config = config;
+
+        this.baseFilterFont = filterField.getFont();
 
         setBorder(null);
         setLayout(new BorderLayout());
@@ -53,37 +64,43 @@ public class FarmPanel extends PluginPanel
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
 
-        scroll = new JScrollPane(list);
+        JScrollPane scroll = new JScrollPane(list);
         scroll.setBorder(null);
         scroll.setOpaque(false);
         scroll.getViewport().setOpaque(false);
 
-        JPanel filterRow = buildFilterRow();
-
-        add(filterRow, BorderLayout.NORTH);
+        add(buildFilterRow(), BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
 
         rebuild();
     }
 
-    private JPanel buildFilterRow()
+    private JComponent buildFilterRow()
     {
-        JPanel top = new JPanel(new BorderLayout());
-        top.setOpaque(true);
-        top.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        float scale = config.textScale().multiplier();
+        int h = Math.round(26 * scale);
 
-        // Filter field styling: consistent height, no "chin"
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setOpaque(true);
+        bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+        // field blends into the bar (no LAF border/chin)
         filterField.setOpaque(false);
-        filterField.setBorder(BorderFactory.createEmptyBorder(PAD_Y, PAD_X, PAD_Y, PAD_X));
-        filterField.setForeground(ColorScheme.TEXT_COLOR);
-        filterField.setCaretColor(ColorScheme.TEXT_COLOR);
-        filterField.setText(PLACEHOLDER);
-        filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+        int padY = Math.max(4, Math.round(PAD_Y * scale));
+        int padX = Math.max(6, Math.round(PAD_X * scale));
+        filterField.setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
 
-        int h = 26;
+        filterField.setCaretColor(ColorScheme.TEXT_COLOR);
+
+        filterField.setFont(UiFont.scaled(filterField.getFont(), scale, Font.PLAIN));
+
         filterField.setPreferredSize(new Dimension(0, h));
         filterField.setMinimumSize(new Dimension(0, h));
         filterField.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
+
+        // placeholder
+        filterField.setText(PLACEHOLDER);
+        filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
 
         filterField.addFocusListener(new java.awt.event.FocusAdapter()
         {
@@ -129,10 +146,10 @@ public class FarmPanel extends PluginPanel
             @Override public void changedUpdate(DocumentEvent e) { changed(); }
         });
 
-        // ESC clears (field stays focused, placeholder comes back on focusLost)
+        // ESC: if empty -> return focus to game; else -> clear filter
         KeyStroke esc = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
-        filterField.getInputMap(JComponent.WHEN_FOCUSED).put(esc, "farmutils.clearFilter");
-        filterField.getActionMap().put("farmutils.clearFilter", new AbstractAction()
+        filterField.getInputMap(JComponent.WHEN_FOCUSED).put(esc, "farmutils.esc");
+        filterField.getActionMap().put("farmutils.esc", new AbstractAction()
         {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e)
@@ -140,14 +157,12 @@ public class FarmPanel extends PluginPanel
                 String t = filterField.getText();
                 boolean effectivelyEmpty = (t == null) || t.trim().isEmpty() || PLACEHOLDER.equals(t);
 
-                // If already empty, ESC acts like "return to game"
                 if (effectivelyEmpty)
                 {
                     clientUI.forceFocus();
                     return;
                 }
 
-                // Otherwise: clear filter
                 filterField.setText("");
                 filterField.setForeground(ColorScheme.TEXT_COLOR);
                 filterText = "";
@@ -155,16 +170,15 @@ public class FarmPanel extends PluginPanel
             }
         });
 
+        bar.add(filterField, BorderLayout.CENTER);
 
-        // Build filter row + 1px divider under it
+        // bar + 1px divider under it
         JPanel container = new JPanel();
         container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
         container.setOpaque(false);
         container.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        top.add(filterField, BorderLayout.CENTER);
-
-        container.add(top);
+        container.add(bar);
         container.add(divider());
 
         return container;
@@ -184,6 +198,43 @@ public class FarmPanel extends PluginPanel
         super.removeNotify();
     }
 
+    public void refreshUiFromConfig()
+    {
+        float scale = config.textScale().multiplier();
+
+        // IMPORTANT: always scale from the unscaled base font
+        filterField.setFont(UiFont.scaled(baseFilterFont, scale, Font.PLAIN));
+
+        int h = Math.round(26 * scale);
+        filterField.setPreferredSize(new Dimension(0, h));
+        filterField.setMinimumSize(new Dimension(0, h));
+        filterField.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
+
+        int padY = Math.max(4, Math.round(PAD_Y * scale));
+        int padX = Math.max(6, Math.round(PAD_X * scale));
+        filterField.setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
+
+        // Keep placeholder style correct
+        if (PLACEHOLDER.equals(filterField.getText()))
+        {
+            filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+        }
+        else
+        {
+            filterField.setForeground(ColorScheme.TEXT_COLOR);
+        }
+
+        // Force layout refresh
+        filterField.revalidate();
+        filterField.repaint();
+        revalidate();
+        repaint();
+
+        // Rebuild list so headers/rows also pick up scale
+        rebuild();
+    }
+
+
     private void installFindShortcut()
     {
         if (keyDispatcher != null)
@@ -200,7 +251,7 @@ public class FarmPanel extends PluginPanel
 
             if (e.getKeyCode() == KeyEvent.VK_F && (e.getModifiersEx() & menuMask) == menuMask)
             {
-                // Toggle: Ctrl/Cmd+F again returns focus to game
+                // toggle back to game if filter already focused
                 if (filterField.isFocusOwner())
                 {
                     clientUI.forceFocus();
@@ -253,7 +304,7 @@ public class FarmPanel extends PluginPanel
                             Collectors.toList()
                     ));
 
-            boolean firstRenderedGroup = true;
+            boolean firstGroup = true;
 
             for (Map.Entry<String, List<PatchId>> entry : grouped.entrySet())
             {
@@ -268,22 +319,20 @@ public class FarmPanel extends PluginPanel
                     continue;
                 }
 
-                // One divider between groups (but not before the first group)
-                if (!firstRenderedGroup)
+                if (!firstGroup)
                 {
                     list.add(divider());
                 }
-                firstRenderedGroup = false;
+                firstGroup = false;
 
                 boolean collapsed = uiStateStore.isGroupCollapsed(groupName);
 
-                // While filtering, always show as expanded (don’t imply hidden results)
+                // while filtering, show as expanded (don’t imply hidden results)
                 boolean collapsedForHeader = hasFilter ? false : collapsed;
 
                 list.add(fullWidth(createGroupHeader(groupName, collapsedForHeader)));
 
                 boolean showBody = (!collapsed || hasFilter);
-
                 if (showBody)
                 {
                     list.add(divider());
@@ -291,7 +340,7 @@ public class FarmPanel extends PluginPanel
                     for (int i = 0; i < visibleIds.size(); i++)
                     {
                         PatchId id = visibleIds.get(i);
-                        list.add(fullWidth(new PatchRow(id, store, this::rebuild)));
+                        list.add(fullWidth(new PatchRow(id, store, config, this::rebuild)));
 
                         if (i < visibleIds.size() - 1)
                         {
@@ -299,7 +348,6 @@ public class FarmPanel extends PluginPanel
                         }
                     }
                 }
-
             }
 
             list.revalidate();
@@ -322,23 +370,37 @@ public class FarmPanel extends PluginPanel
 
     private Component createGroupHeader(String groupName, boolean collapsed)
     {
+        float scale = config.textScale().multiplier();
+        boolean emphasize = config.emphasizeHeaders();
+
+        float headerScale = emphasize ? (scale * 1.05f) : scale;
+        int style = emphasize ? Font.BOLD : Font.PLAIN;
+
         final String tri = collapsed ? "▸" : "▾";
 
         JLabel triLabel = new JLabel(tri);
         triLabel.setOpaque(false);
         triLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 6));
         triLabel.setForeground(collapsed ? TRI_DISABLED : HEADER_ORANGE);
+        triLabel.setFont(UiFont.scaled(triLabel.getFont(), headerScale, style));
 
         JLabel textLabel = new JLabel(groupName);
-        textLabel.setFont(textLabel.getFont().deriveFont(collapsed ? Font.PLAIN : Font.BOLD));
         textLabel.setOpaque(false);
         textLabel.setForeground(HEADER_ORANGE);
+        textLabel.setFont(UiFont.scaled(textLabel.getFont(), headerScale, style));
 
         JPanel header = new JPanel();
         header.setLayout(new BoxLayout(header, BoxLayout.X_AXIS));
         header.setOpaque(true);
+
+        // collapsed vs expanded differentiation
         header.setBackground(collapsed ? ColorScheme.DARK_GRAY_COLOR : ColorScheme.DARK_GRAY_HOVER_COLOR);
-        header.setBorder(BorderFactory.createEmptyBorder(PAD_Y, PAD_X, PAD_Y, PAD_X));
+
+        float groupScale = config.textScale().multiplier();
+        int padY = Math.max(4, Math.round(PAD_Y * groupScale));
+        int padX = Math.max(6, Math.round(PAD_X * groupScale));
+        header.setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
+
         header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         header.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -362,7 +424,6 @@ public class FarmPanel extends PluginPanel
         return header;
     }
 
-    // Guaranteed 1px divider (no LAF surprises)
     private static JComponent divider()
     {
         JPanel d = new JPanel();

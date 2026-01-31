@@ -1,5 +1,6 @@
 package com.farmutils.ui;
 
+import com.farmutils.FarmutilsConfig;
 import com.farmutils.model.PatchId;
 import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
@@ -19,14 +20,19 @@ public class PatchRow extends JPanel
     private static final int PAD_X = 8;
     private static final int PAD_Y = 6;
 
-    public PatchRow(PatchId id, PatchStore store, Runnable onChange)
+    public PatchRow(PatchId id, PatchStore store, FarmutilsConfig config, Runnable onChange)
     {
         PatchView view = store.view(id);
+
+        float scale = config.textScale().multiplier();
 
         setLayout(new BorderLayout());
         setOpaque(true);
         setBackground(ColorScheme.DARK_GRAY_COLOR);
-        setBorder(BorderFactory.createEmptyBorder(PAD_Y, PAD_X, PAD_Y, PAD_X));
+        int padY = Math.max(4, Math.round(PAD_Y * scale));
+        int padX = Math.max(6, Math.round(PAD_X * scale));
+        setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
+
         setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JPanel leftCol = new JPanel();
@@ -37,11 +43,13 @@ public class PatchRow extends JPanel
         JLabel title = new JLabel(id.getGroup() + " — " + id.getLabel());
         title.setOpaque(false);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        title.setFont(UiFont.scaled(title.getFont(), scale, Font.PLAIN));
 
         JLabel indicator = new JLabel(indicatorText(view));
         indicator.setOpaque(false);
         indicator.setAlignmentX(Component.LEFT_ALIGNMENT);
         indicator.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        indicator.setFont(UiFont.scaled(indicator.getFont(), scale * 0.95f, Font.PLAIN));
 
         leftCol.add(title);
         leftCol.add(indicator);
@@ -54,6 +62,7 @@ public class PatchRow extends JPanel
         indicator.setToolTipText(tooltip);
 
         JPopupMenu menu = new JPopupMenu();
+
         for (PatchState state : PatchState.values())
         {
             JMenuItem item = new JMenuItem("Set: " + pretty(state));
@@ -116,7 +125,6 @@ public class PatchRow extends JPanel
         }
 
         PatchRecord record = view.getRecord().get();
-
         String updated = "Updated: " + timeAgo(record.getUpdatedAtMillis()) + ".";
         String stale = view.isStale() ? " (Stale)" : "";
 
