@@ -5,42 +5,55 @@ import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
 import com.farmutils.model.PatchView;
 import com.farmutils.storage.PatchStore;
+import net.runelite.client.ui.ColorScheme;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Optional;
 
 public class PatchRow extends JPanel
 {
-    private static final long STALE_MILLIS = Duration.ofDays(7).toMillis();
+    private static final int PAD_X = 8;
+    private static final int PAD_Y = 6;
 
     public PatchRow(PatchId id, PatchStore store, Runnable onChange)
     {
-        setLayout(new BorderLayout());
-        setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, getPreferredSize().height));
-
-
-        JLabel left = new JLabel(id.getGroup() + " — " + id.getLabel());
         PatchView view = store.view(id);
-        Optional<PatchRecord> record = view.getRecord();
-        JLabel right = new JLabel(formatState(view));
+
+        setLayout(new BorderLayout());
+        setOpaque(true);
+        setBackground(ColorScheme.DARK_GRAY_COLOR);
+        setBorder(BorderFactory.createEmptyBorder(PAD_Y, PAD_X, PAD_Y, PAD_X));
+        setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JPanel leftCol = new JPanel();
+        leftCol.setLayout(new BoxLayout(leftCol, BoxLayout.Y_AXIS));
+        leftCol.setOpaque(false);
+        leftCol.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel title = new JLabel(id.getGroup() + " — " + id.getLabel());
+        title.setOpaque(false);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel indicator = new JLabel(indicatorText(view));
+        indicator.setOpaque(false);
+        indicator.setAlignmentX(Component.LEFT_ALIGNMENT);
+        indicator.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+
+        leftCol.add(title);
+        leftCol.add(indicator);
+
+        add(leftCol, BorderLayout.CENTER);
 
         String tooltip = buildTooltip(view);
         setToolTipText(tooltip);
-        right.setToolTipText(tooltip);
-        left.setToolTipText(tooltip);
-
-        add(left, BorderLayout.WEST);
-        add(right, BorderLayout.EAST);
+        title.setToolTipText(tooltip);
+        indicator.setToolTipText(tooltip);
 
         JPopupMenu menu = new JPopupMenu();
-
         for (PatchState state : PatchState.values())
         {
             JMenuItem item = new JMenuItem("Set: " + pretty(state));
@@ -82,7 +95,17 @@ public class PatchRow extends JPanel
                 }
             }
         });
-        setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, getPreferredSize().height));
+    }
+
+    private static String indicatorText(PatchView view)
+    {
+        if (!view.getRecord().isPresent())
+        {
+            return "Unknown";
+        }
+
+        String base = pretty(view.getRecord().get().getState());
+        return view.isStale() ? base + " · Stale" : base;
     }
 
     private static String buildTooltip(PatchView view)
@@ -93,32 +116,11 @@ public class PatchRow extends JPanel
         }
 
         PatchRecord record = view.getRecord().get();
-        PatchState state = record.getState();
-
-        String stateLine;
-        switch (state)
-        {
-            case EMPTY:
-                stateLine = "Empty: you checked this patch and recorded nothing planted.";
-                break;
-            case GROWING:
-                stateLine = "Growing: you recorded this patch as in progress.";
-                break;
-            case READY:
-                stateLine = "Ready: you recorded this patch as harvestable.";
-                break;
-            case DEAD:
-                stateLine = "Dead: you recorded this patch as dead.";
-                break;
-            default:
-                stateLine = state.name();
-        }
 
         String updated = "Updated: " + timeAgo(record.getUpdatedAtMillis()) + ".";
-        String source = "Source: " + prettySource(view.getSource()) + ".";
+        String stale = view.isStale() ? " (Stale)" : "";
 
-        // Keep it factual and quiet.
-        return stateLine + " " + updated + " " + source;
+        return pretty(record.getState()) + stale + ". " + updated + " Source: " + view.getSource().name() + ".";
     }
 
     private static String timeAgo(long updatedAtMillis)
@@ -135,35 +137,6 @@ public class PatchRow extends JPanel
 
         long days = ChronoUnit.DAYS.between(then, now);
         return days + "d ago";
-    }
-
-
-
-    private static String formatState(PatchView view)
-    {
-        Optional<PatchRecord> record = view.getRecord();
-        if (!record.isPresent())
-        {
-            return "Unknown";
-        }
-
-        String base = pretty(record.get().getState());
-        return base + (view.isStale() ? " (Stale)" : "");
-    }
-
-    private static String prettySource(com.farmutils.model.PatchSource source)
-    {
-        switch (source)
-        {
-            case MANUAL:
-                return "Manual";
-            case INFERRED:
-                return "Inferred";
-            case UNKNOWN:
-                return "Unknown";
-            default:
-                return source.name();
-        }
     }
 
     private static String pretty(PatchState state)
