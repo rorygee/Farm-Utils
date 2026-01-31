@@ -18,7 +18,7 @@ import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class FarmPanel extends PluginPanel
+public class FarmPanel extends JPanel
 {
     private static final String PLACEHOLDER = "Filter patches…";
 
@@ -37,6 +37,8 @@ public class FarmPanel extends PluginPanel
     private final ClientUI clientUI;
     private final FarmutilsConfig config;
 
+    private final JPanel container = new JPanel();
+
     private final Font baseFilterFont;
 
     private final JPanel list = new JPanel();
@@ -48,7 +50,7 @@ public class FarmPanel extends PluginPanel
     @Inject
     public FarmPanel(PatchStore store, UiStateStore uiStateStore, ClientUI clientUI, FarmutilsConfig config)
     {
-        super(false);
+        super(new BorderLayout());
 
         this.store = store;
         this.uiStateStore = uiStateStore;
@@ -57,23 +59,29 @@ public class FarmPanel extends PluginPanel
 
         this.baseFilterFont = filterField.getFont();
 
+        // Painted “floor” for this view
+        setOpaque(true);
+        setBackground(ColorScheme.DARK_GRAY_COLOR);
         setBorder(null);
-        setLayout(new BorderLayout());
-        setOpaque(false);
+
+        container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
+        container.setOpaque(false);
+        container.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
+        list.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JScrollPane scroll = new JScrollPane(list);
-        scroll.setBorder(null);
-        scroll.setOpaque(false);
-        scroll.getViewport().setOpaque(false);
+        // filter row first
+        container.add(buildFilterRow());
 
-        add(buildFilterRow(), BorderLayout.NORTH);
-        add(scroll, BorderLayout.CENTER);
+        // then the list
+        container.add(list);
 
-        rebuild();
+        // IMPORTANT: NORTH so the content grows vertically and the sidebar owns scrolling
+        add(container, BorderLayout.NORTH);
     }
+
 
     private JComponent buildFilterRow()
     {

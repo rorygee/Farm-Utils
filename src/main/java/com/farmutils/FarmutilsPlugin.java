@@ -1,5 +1,7 @@
 package com.farmutils;
 
+import com.farmutils.ui.FarmRootPanel;
+import com.farmutils.ui.FarmStubPanel;
 import com.google.inject.Provides;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +38,8 @@ public class FarmutilsPlugin extends Plugin
 	@Inject
 	private FarmPanel farmPanel;
 
+	private FarmRootPanel rootPanel;
+
 	private NavigationButton navButton;
 
 	@Inject
@@ -44,11 +48,19 @@ public class FarmutilsPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		rootPanel = new FarmRootPanel(
+				farmPanel,
+				new FarmStubPanel("Routes", "Route planning will be added later."),
+				new FarmStubPanel("Calc", "Profit and XP calculations will be added later."),
+				new FarmStubPanel("Export", "Export and sharing features will be added later.")
+		);
+
 		navButton = NavigationButton.builder()
 				.tooltip("Farm Utils")
 				.icon(ImageUtil.loadImageResource(getClass(), "/icon.png"))
-				.panel(farmPanel)
+				.panel(rootPanel)
 				.build();
+
 
 		clientToolbar.addNavigation(navButton);
 		farmPanel.refreshUiFromConfig();
