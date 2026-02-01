@@ -1,5 +1,6 @@
 package com.farmutils.ui;
 
+import com.farmutils.config.TextScale;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 
@@ -8,6 +9,9 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.EnumMap;
 import java.util.Map;
+
+import com.farmutils.FarmutilsConfig;
+import net.runelite.client.ui.FontManager;
 
 public class FarmRootPanel extends PluginPanel
 {
@@ -63,11 +67,14 @@ public class FarmRootPanel extends PluginPanel
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new PreferredCardPanel(cardLayout);
 
-
     private final Map<Mode, JToggleButton> buttons = new EnumMap<>(Mode.class);
     private Mode current = Mode.PATCHES;
 
+    private final FarmutilsConfig config;
+    private static final String PROP_NAV_BASE_FONT = "farmutils.navBaseFont";
+
     public FarmRootPanel(
+            FarmutilsConfig config,
             FarmPanel farmPanel,
             JComponent routesPanel,
             JComponent calcPanel,
@@ -75,6 +82,8 @@ public class FarmRootPanel extends PluginPanel
     )
     {
         super();
+
+        this.config = config;
 
         // Painted “floor” so no white bleed-through anywhere
         setOpaque(true);
@@ -90,6 +99,32 @@ public class FarmRootPanel extends PluginPanel
         add(cards, BorderLayout.CENTER);
 
         showMode(Mode.PATCHES);
+    }
+
+    private void applyNavFont(JToggleButton btn)
+    {
+        // Store a stable base font so we don't compound scaling every refresh.
+        Font base = (Font) btn.getClientProperty(PROP_NAV_BASE_FONT);
+        if (base == null)
+        {
+            // Use RuneLite font as base to match overall UI
+            base = FontManager.getRunescapeFont();
+            if (base == null)
+            {
+                base = btn.getFont();
+            }
+            btn.putClientProperty(PROP_NAV_BASE_FONT, base);
+        }
+
+        float scale = config.textScale().multiplier();
+
+        // Clamp XL to behave like Large for the nav
+        float effectiveScale = Math.min(scale, TextScale.LARGE.multiplier());
+
+        // Gentler scaling for nav
+        float navScale = 1.0f + (effectiveScale - 1.0f) * 0.65f;
+
+        btn.setFont(UiFont.scaled(base, navScale, Font.PLAIN));
     }
 
     private void buildNav()
@@ -136,7 +171,7 @@ public class FarmRootPanel extends PluginPanel
         btn.setForeground(Color.WHITE);
 
         // Scale-safe: derive only (no size)
-        btn.setFont(btn.getFont().deriveFont(Font.PLAIN));
+        applyNavFont(btn);
 
         btn.addActionListener(e ->
         {
@@ -181,6 +216,16 @@ public class FarmRootPanel extends PluginPanel
         revalidate();
         repaint();
 
+    }
+
+    public void refreshUiFromConfig()
+    {
+        for (JToggleButton b : buttons.values())
+        {
+            applyNavFont(b);
+        }
+        nav.revalidate();
+        nav.repaint();
     }
 
     public void resetToDefault()

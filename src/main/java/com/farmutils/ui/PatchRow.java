@@ -51,6 +51,24 @@ public class PatchRow extends JPanel
         indicator.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         indicator.setFont(UiFont.scaled(indicator.getFont(), scale * 0.95f, Font.PLAIN));
 
+        // Prevent long titles from inflating preferred width (causes RuneLite viewport inset/border flips).
+// We deliberately allow clipping for now; full text remains available via tooltip.
+        Dimension titlePref = title.getPreferredSize();
+        int titleH = titlePref.height;
+
+        Dimension indPref = indicator.getPreferredSize();
+        int indH = indPref.height;
+
+        indicator.setPreferredSize(new Dimension(0, indH));
+        indicator.setMinimumSize(new Dimension(0, indH));
+        indicator.setMaximumSize(new Dimension(Integer.MAX_VALUE, indH));
+
+
+        title.setPreferredSize(new Dimension(0, titleH));
+        title.setMinimumSize(new Dimension(0, titleH));
+        title.setMaximumSize(new Dimension(Integer.MAX_VALUE, titleH));
+
+
         leftCol.add(title);
         leftCol.add(indicator);
 

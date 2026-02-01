@@ -30,6 +30,12 @@ import java.awt.Rectangle;
 import javax.swing.SwingUtilities;
 
 
+import java.awt.MouseInfo;
+import java.awt.PointerInfo;
+import javax.swing.Timer;
+import javax.swing.JViewport;
+
+
 public class FarmPanel extends JPanel
 {
     private static final String PLACEHOLDER = "Filter patches…";
@@ -673,6 +679,13 @@ public class FarmPanel extends JPanel
         private int lastTargetIndex = -1;
         private static final int MIDPOINT_DEADZONE_PX = 6; // tune 4–10
 
+        private static final int AUTO_SCROLL_MARGIN_PX = 24;
+        private static final int AUTO_SCROLL_STEP_PX = 18;
+        private static final int AUTO_SCROLL_PERIOD_MS = 40;
+
+        private Timer autoScrollTimer;
+        private JViewport viewport;
+
         void bind(JComponent handle, JPanel listPanel, JPanel groupBlock)
         {
             handle.addMouseListener(this);
@@ -709,6 +722,8 @@ public class FarmPanel extends JPanel
                 }
 
                 dragging = true;
+
+                startAutoScroll();
 
                 snapshotDropThresholds();
                 lastTargetIndex = -1;
@@ -767,6 +782,120 @@ public class FarmPanel extends JPanel
                     false
             ));
         }
+
+        private void startAutoScroll()
+        {
+            if (autoScrollTimer != null)
+            {
+                return;
+            }
+
+            viewport = (JViewport) SwingUtilities.getAncestorOfClass(JViewport.class, listPanel);
+            if (viewport == null)
+            {
+                return; // RuneLite scroll wrapper not present
+            }
+
+            autoScrollTimer = new Timer(AUTO_SCROLL_PERIOD_MS, ev ->
+            {
+                if (!dragging || viewport == null || listPanel == null)
+                {
+                    return;
+                }
+
+                PointerInfo pi = MouseInfo.getPointerInfo();
+                if (pi == null)
+                {
+                    return;
+                }
+
+                // Pointer in listPanel coords
+                Point p = new Point(pi.getLocation());
+                SwingUtilities.convertPointFromScreen(p, listPanel);
+
+                // Viewport rect is in viewport view coords, not listPanel coords.
+                // Convert pointer to viewport view coords (FarmPanel coords).
+                Component view = viewport.getView(); // should be FarmPanel
+                Point pInView = new Point(pi.getLocation());
+                SwingUtilities.convertPointFromScreen(pInView, view);
+
+                Rectangle viewRect = viewport.getViewRect();
+
+                int dy = 0;
+                if (pInView.y < viewRect.y + AUTO_SCROLL_MARGIN_PX)
+                {
+                    dy = -AUTO_SCROLL_STEP_PX;
+                }
+                else if (pInView.y > viewRect.y + viewRect.height - AUTO_SCROLL_MARGIN_PX)
+                {
+                    dy = AUTO_SCROLL_STEP_PX;
+                }
+
+                if (dy == 0)
+                {
+                    return;
+                }
+
+                Point pos = viewport.getViewPosition();
+
+                int maxY = Math.max(0, view.getHeight() - viewport.getExtentSize().height);
+                int newY = Math.max(0, Math.min(pos.y + dy, maxY));
+
+                if (newY != pos.y)
+                {
+                    viewport.setViewPosition(new Point(pos.x, newY));
+
+                    // Keep indicator in sync even if mouse hasn't moved
+                    updateDropLineAtPointerInList(p);
+                }
+            });
+
+            autoScrollTimer.start();
+        }
+
+        private void stopAutoScroll()
+        {
+            if (autoScrollTimer != null)
+            {
+                autoScrollTimer.stop();
+                autoScrollTimer = null;
+            }
+            viewport = null;
+        }
+
+        private void updateDropLineAtPointerInList(Point pInListPanel)
+        {
+            if (dropThresholds == null || dropThresholds.isEmpty())
+            {
+                return;
+            }
+
+            int mouseY = pInListPanel.y;
+
+            int snapshotIndex = 0;
+            for (int i = 0; i < dropThresholds.size(); i++)
+            {
+                if (mouseY < dropThresholds.get(i))
+                {
+                    snapshotIndex = i;
+                    break;
+                }
+            }
+
+            int listIndex = toListPanelIndex(snapshotIndex);
+
+            if (wouldBeNoOp(listIndex))
+            {
+                listIndex = Math.min(listPanel.getComponentCount(), listIndex + 1);
+            }
+
+            if (listIndex != lastTargetIndex)
+            {
+                lastTargetIndex = listIndex;
+                placeDropLine(listPanel, listIndex);
+            }
+        }
+
 
 
 
@@ -877,6 +1006,8 @@ public class FarmPanel extends JPanel
             lastTargetIndex = -1;
             draggedBlock = null;
             dropThresholds = null;
+
+            stopAutoScroll();
 
         }
 

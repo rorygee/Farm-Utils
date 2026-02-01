@@ -45,6 +45,7 @@ public class FarmutilsPlugin extends Plugin
 	protected void startUp()
 	{
 		rootPanel = new FarmRootPanel(
+				config,
 				farmPanel,
 				new FarmStubPanel("Routes", "Route planning will be added later."),
 				new FarmStubPanel("Calc", "Profit and XP calculations will be added later."),
@@ -60,6 +61,8 @@ public class FarmutilsPlugin extends Plugin
 
 		clientToolbar.addNavigation(navButton);
 		farmPanel.refreshUiFromConfig();
+
+		rootPanel.refreshUiFromConfig();
 	}
 
 	@Override
@@ -71,6 +74,8 @@ public class FarmutilsPlugin extends Plugin
 			navButton = null;
 		}
 	}
+
+
 
 
 	@Subscribe
@@ -90,6 +95,11 @@ public class FarmutilsPlugin extends Plugin
 		if (farmPanel != null)
 		{
 			farmPanel.refreshUiFromConfig();
+		}
+
+		if (rootPanel != null)
+		{
+			rootPanel.refreshUiFromConfig();
 		}
 	}
 
