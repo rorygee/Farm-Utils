@@ -50,5 +50,18 @@ public interface FarmutilsConfig extends Config
         return true;
     }
 
+    @ConfigItem(
+            keyName = "showPatchCategoryPrefix",
+            name = "Show patch category prefix",
+            description = "Prefix each patch name with its category (e.g. \"Herb -\", \"Tree -\").",
+            position = 3,
+            section = appearanceSection
+    )
+    default boolean showPatchCategoryPrefix()
+    {
+        return false;
+    }
+
+
 
 }

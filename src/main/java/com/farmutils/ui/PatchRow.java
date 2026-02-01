@@ -40,10 +40,21 @@ public class PatchRow extends JPanel
         leftCol.setOpaque(false);
         leftCol.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel title = new JLabel(id.getGroup() + " — " + id.getLabel());
+        JLabel title = new JLabel();
         title.setOpaque(false);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
         title.setFont(UiFont.scaled(title.getFont(), scale, Font.PLAIN));
+
+        String titleText;
+        if (config.showPatchCategoryPrefix())
+        {
+            titleText = id.getGroup() + " - " + id.getLabel();
+        }
+        else
+        {
+            titleText = id.getLabel();
+        }
+        title.setText(titleText);
 
         JLabel indicator = new JLabel(indicatorText(view));
         indicator.setOpaque(false);
