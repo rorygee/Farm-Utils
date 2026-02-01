@@ -23,9 +23,46 @@ public class FarmRootPanel extends PluginPanel
         public String label() { return label; }
     }
 
+    private static final class PreferredCardPanel extends JPanel
+    {
+        PreferredCardPanel(LayoutManager layout)
+        {
+            super(layout);
+            setOpaque(true);
+        }
+
+        @Override
+        public Dimension getPreferredSize()
+        {
+            for (Component c : getComponents())
+            {
+                if (c.isVisible())
+                {
+                    return c.getPreferredSize();
+                }
+            }
+            return super.getPreferredSize();
+        }
+
+        @Override
+        public Dimension getMinimumSize()
+        {
+            for (Component c : getComponents())
+            {
+                if (c.isVisible())
+                {
+                    return c.getMinimumSize();
+                }
+            }
+            return super.getMinimumSize();
+        }
+    }
+
+
     private final JPanel nav = new JPanel(new GridBagLayout());
-    private final JPanel cards = new JPanel(new CardLayout());
-    private final CardLayout cardLayout = (CardLayout) cards.getLayout();
+    private final CardLayout cardLayout = new CardLayout();
+    private final JPanel cards = new PreferredCardPanel(cardLayout);
+
 
     private final Map<Mode, JToggleButton> buttons = new EnumMap<>(Mode.class);
     private Mode current = Mode.PATCHES;
@@ -138,6 +175,12 @@ public class FarmRootPanel extends PluginPanel
         }
 
         cardLayout.show(cards, mode.name());
+
+        cards.revalidate();
+        cards.repaint();
+        revalidate();
+        repaint();
+
     }
 
     public void resetToDefault()
