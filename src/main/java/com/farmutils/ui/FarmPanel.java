@@ -340,7 +340,24 @@ public class FarmPanel extends JPanel
             boolean hasFilter = filterText != null && !filterText.isEmpty();
 
             Map<String, List<PatchId>> grouped = Arrays.stream(PatchId.values())
-                    .sorted(Comparator.comparing(PatchId::getGroup).thenComparing(PatchId::getLabel))
+                    .sorted(
+                            Comparator.comparing(PatchId::getGroup)
+                                    .thenComparing(id -> {
+                                        // Stable primary ordering for multi-slot locations
+                                        String k = id.getLocationName();
+                                        if (k != null) return k;
+                                        k = id.getLocationKey();
+                                        if (k != null) return k;
+                                        return id.getLabel();
+                                    })
+                                    .thenComparing(id -> {
+                                        // Stable within-location slot ordering
+                                        String s = id.getSlotLabel();
+                                        if (s != null) return s;
+                                        return id.getLabel();
+                                    })
+                    )
+
                     .collect(Collectors.groupingBy(
                             PatchId::getGroup,
                             LinkedHashMap::new,
@@ -406,12 +423,40 @@ public class FarmPanel extends JPanel
                 {
                     groupBlock.add(divider());
 
-                    for (int i = 0; i < visibleIds.size(); i++)
-                    {
-                        PatchId id = visibleIds.get(i);
-                        groupBlock.add(fullWidth(new PatchRow(id, store, config, this::rebuild)));
+                    // Render-only location headers: shown only when 2+ entries share the same locationKey.
+                    Map<String, Long> locationCounts = visibleIds.stream()
+                            .map(PatchId::getLocationKey)
+                            .filter(k -> k != null)
+                            .collect(Collectors.groupingBy(k -> k, Collectors.counting()));
 
-                        if (i < visibleIds.size() - 1)
+                    java.util.Set<String> seenLocations = new java.util.HashSet<>();
+                    java.util.List<JComponent> bodyItems = new java.util.ArrayList<>();
+
+                    for (PatchId id : visibleIds)
+                    {
+                        String locationKey = id.getLocationKey();
+                        boolean isMultiSlot = locationKey != null && locationCounts.getOrDefault(locationKey, 0L) >= 2;
+
+                        if (isMultiSlot && seenLocations.add(locationKey))
+                        {
+                            String locationName = id.getLocationName() != null ? id.getLocationName() : id.getLabel();
+                            bodyItems.add(fullWidth(new LocationHeaderRow(locationName, config)));
+                        }
+
+                        JComponent rowWrap = fullWidth(new PatchRow(id, store, config, this::rebuild));
+                        if (isMultiSlot)
+                        {
+                            // Subtle indent under a location header. Wrapper is used to preserve PatchRow layout contract.
+                            int indent = Math.max(8, Math.round(10 * config.textScale().multiplier()));
+                            rowWrap.setBorder(BorderFactory.createEmptyBorder(0, indent, 0, 0));
+                        }
+                        bodyItems.add(rowWrap);
+                    }
+
+                    for (int i = 0; i < bodyItems.size(); i++)
+                    {
+                        groupBlock.add(bodyItems.get(i));
+                        if (i < bodyItems.size() - 1)
                         {
                             groupBlock.add(divider());
                         }
