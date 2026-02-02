@@ -222,18 +222,96 @@ public enum PatchId
     SPIRIT_TREE_FARMING_GUILD("Spirit tree", "Farming Guild"),
 
     // --- Special patches (non-tree) ---
-    SPECIAL_SEAWEED("Special", "Underwater (Seaweed)"),
-    SPECIAL_CORAL_NURSERY("Special", "Coral Nurseries"),
-    SPECIAL_GRAPES("Special", "Hosidius Vinery (Grapes)"),
-    SPECIAL_MUSHROOM("Special", "Canifis (Mushroom)"),
-    SPECIAL_BELLADONNA_DRAYNOR("Belladonna", "Draynor Manor (Belladonna)"),
-    SPECIAL_BELLADONNA_AUBURNVALE("Belladonna", "Auburnvale (Belladonna)"),
-    SPECIAL_HESPORI("Hespori", "Farming Guild", PatchQualifier.BOSS, "Hespori"),
-    SPECIAL_ANIMA("Anima", "Farming Guild", PatchQualifier.ACTIVITY, "Anima patch"),
+    // Underwater (2 seaweed patches)
+    SPECIAL_SEAWEED_PLOT_1(
+            "Seaweed", "Plot 1", null, null,
+            "underwater_seaweed", "Underwater", "Plot 1"
+    ),
+    SPECIAL_SEAWEED_PLOT_2(
+            "Seaweed", "Plot 2", null, null,
+            "underwater_seaweed", "Underwater", "Plot 2"
+    ),
+
+    // Coral Nurseries (2 patches)
+    SPECIAL_CORAL_NURSERY_PLOT_1(
+            "Coral", "Plot 1", null, null,
+            "coral_nurseries", "Coral Nurseries", "Plot 1"
+    ),
+    SPECIAL_CORAL_NURSERY_PLOT_2(
+            "Coral", "Plot 2", null, null,
+            "coral_nurseries", "Coral Nurseries", "Plot 2"
+    ),
+
+    // Hosidius Vinery (12 grape patches)
+    SPECIAL_GRAPES_PLOT_1(
+            "Grapes", "Plot 1", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 1"
+    ),
+    SPECIAL_GRAPES_PLOT_2(
+            "Grapes", "Plot 2", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 2"
+    ),
+    SPECIAL_GRAPES_PLOT_3(
+            "Grapes", "Plot 3", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 3"
+    ),
+    SPECIAL_GRAPES_PLOT_4(
+            "Grapes", "Plot 4", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 4"
+    ),
+    SPECIAL_GRAPES_PLOT_5(
+            "Grapes", "Plot 5", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 5"
+    ),
+    SPECIAL_GRAPES_PLOT_6(
+            "Grapes", "Plot 6", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 6"
+    ),
+    SPECIAL_GRAPES_PLOT_7(
+            "Grapes", "Plot 7", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 7"
+    ),
+    SPECIAL_GRAPES_PLOT_8(
+            "Grapes", "Plot 8", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 8"
+    ),
+    SPECIAL_GRAPES_PLOT_9(
+            "Grapes", "Plot 9", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 9"
+    ),
+    SPECIAL_GRAPES_PLOT_10(
+            "Grapes", "Plot 10", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 10"
+    ),
+    SPECIAL_GRAPES_PLOT_11(
+            "Grapes", "Plot 11", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 11"
+    ),
+    SPECIAL_GRAPES_PLOT_12(
+            "Grapes", "Plot 12", null, null,
+            "hosidius_vinery", "Hosidius Vinery", "Plot 12"
+    ),
+    SPECIAL_MUSHROOM("Mushroom", "Canifis"),
+    SPECIAL_BELLADONNA_DRAYNOR("Belladonna", "Draynor Manor"),
+    SPECIAL_BELLADONNA_AUBURNVALE("Belladonna", "Auburnvale"),
+    SPECIAL_HESPORI("Activity", "Farming Guild", PatchQualifier.BOSS, "Hespori"),
+    SPECIAL_ANIMA("Activity", "Farming Guild", PatchQualifier.ACTIVITY, "Anima patch"),
 
     // --- Special tree patches ---
     // --- Hardwood ---
-    SPECIAL_TREE_HARDWOOD_FOSSIL_ISLAND("Hardwood", "Fossil Island"),
+    // Fossil Island (3 hardwood patches)
+    SPECIAL_TREE_HARDWOOD_FOSSIL_ISLAND_PLOT_1(
+            "Hardwood", "Plot 1", null, null,
+            "fossil_island_hardwood", "Fossil Island", "Plot 1"
+    ),
+    SPECIAL_TREE_HARDWOOD_FOSSIL_ISLAND_PLOT_2(
+            "Hardwood", "Plot 2", null, null,
+            "fossil_island_hardwood", "Fossil Island", "Plot 2"
+    ),
+    SPECIAL_TREE_HARDWOOD_FOSSIL_ISLAND_PLOT_3(
+            "Hardwood", "Plot 3", null, null,
+            "fossil_island_hardwood", "Fossil Island", "Plot 3"
+    ),
     SPECIAL_TREE_HARDWOOD_LOCUS_OASIS("Hardwood", "Locus Oasis"),
     SPECIAL_TREE_HARDWOOD_ANGLERS_RETREAT("Hardwood", "Anglers' Retreat"),
 
@@ -243,9 +321,9 @@ public enum PatchId
     SPECIAL_TREE_CALQUAT_KASTORI("Calquat", "Kastori"),
 
     // --- Special tree ---
-    SPECIAL_TREE_CRYSTAL_PRIFDDINAS("Special tree", "Prifddinas (Crystal)"),
-    SPECIAL_TREE_CELASTRUS_FARMING_GUILD("Special tree", "Farming Guild (Celastrus)"),
-    SPECIAL_TREE_REDWOOD_FARMING_GUILD("Special tree", "Farming Guild (Redwood)"),
+    SPECIAL_TREE_CRYSTAL_PRIFDDINAS("Crystal tree", "Prifddinas"),
+    SPECIAL_TREE_CELASTRUS_FARMING_GUILD("Celastrus", "Farming Guild"),
+    SPECIAL_TREE_REDWOOD_FARMING_GUILD("Redwood", "Farming Guild"),
 
 
     // --- Cactus ---
@@ -253,19 +331,59 @@ public enum PatchId
     CACTUS_FARMING_GUILD("Cactus", "Farming Guild"),
 
     // --- Activity (minigame/raid/etc) ---
-    SPECIAL_TITHE_FARM("Tithe Farm", "Tithe Farm", PatchQualifier.MINIGAME, "Tithe Farm"),
-    ACTIVITY_COX_HERB("Activity", "Chambers of Xeric"),
-    ACTIVITY_COX_WEEDS("Activity", "Chambers of Xeric (Weeds)"),
-    ACTIVITY_MISCELLANIA_HERB("Activity", "Miscellania (Herb)"),
-    ACTIVITY_MISCELLANIA_FLAX("Activity", "Miscellania (Flax)"),
-    ACTIVITY_BIG_CATS_GRASS("Activity", "Big Cats & WWF"),
+    SPECIAL_TITHE_FARM("Activity", "Tithe Farm", PatchQualifier.MINIGAME, "Tithe Farm"),
+    SPECIAL_COX_HERB(
+            "Activity", "Herb patch", PatchQualifier.RAID, "Chambers of Xeric",
+            "mount_quidamortem", "Mount Quidamortem", null
+    ),
+    SPECIAL_COX_WEEDS(
+            "Activity", "Weeds", PatchQualifier.RAID, "Chambers of Xeric",
+            "mount_quidamortem", "Mount Quidamortem", null
+    ),
 
-    // --- Quest-specific patches ---
-    QUEST_UNFERTHS_PATCH("Quest", "Burthorpe (Unferth's Patch)"),
-    QUEST_MAGIC_BEANS("Quest", "Taverley (Magic Beans)"),
-    QUEST_KELDA_HOPS("Quest", "Keldagrim (Kelda Hops)"),
-    QUEST_ELDER_CADANTINE("Quest", "Lletya (Elder Cadantine)"),
-    QUEST_ENRICHED_SNAPDRAGON("Quest", "White Knights' Castle (Enriched Snapdragon)");
+    SPECIAL_MISCELLANIA_HERB(
+            "Activity", "Herb patch", PatchQualifier.ACTIVITY, "Miscellania",
+            "miscellania", "Miscellania", null
+    ),
+    SPECIAL_MISCELLANIA_FLAX(
+            "Activity", "Flax", PatchQualifier.ACTIVITY, "Miscellania",
+            "miscellania", "Miscellania", null
+    ),
+
+
+// --- Quest-specific patches ---
+// (Grouped by real patch mechanic; quest context represented via PatchQualifier.QUEST)
+
+    QUEST_UNFERTHS_PATCH(
+            "Allotment", "Unferth's patch",
+            PatchQualifier.QUEST, "Unferth's patch",
+            "burthorpe", "Burthorpe", null
+    ),
+
+    QUEST_MAGIC_BEANS(
+            "Activity", "Magic beanstalk",
+            PatchQualifier.QUEST, "Magic beanstalk",
+            "taverley", "Taverley", null
+    ),
+
+    QUEST_KELDA_HOPS(
+            "Hops", "Kelda hops",
+            PatchQualifier.QUEST, "Kelda hops",
+            "keldagrim", "Keldagrim", null
+    ),
+
+    QUEST_ELDER_CADANTINE(
+            "Herb", "Elder cadantine",
+            PatchQualifier.QUEST, "Elder cadantine",
+            "lletya", "Lletya", null
+    ),
+
+    QUEST_ENRICHED_SNAPDRAGON(
+            "Herb", "Enriched snapdragon",
+            PatchQualifier.QUEST, "Enriched snapdragon",
+            "white_knights_castle", "White Knights' Castle", null
+    );
+
 
     private final String group;
     private final String label;

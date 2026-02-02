@@ -350,12 +350,25 @@ public class FarmPanel extends JPanel
                                         if (k != null) return k;
                                         return id.getLabel();
                                     })
-                                    .thenComparing(id -> {
-                                        // Stable within-location slot ordering
+                                    .thenComparing((PatchId id) ->
+                                    {
                                         String s = id.getSlotLabel();
-                                        if (s != null) return s;
-                                        return id.getLabel();
+                                        if (s == null)
+                                        {
+                                            s = id.getLabel();
+                                        }
+
+                                        Integer n = tryParsePlotNumber(s);
+                                        // Sort numeric plots first by number, otherwise by string.
+                                        // We return a compound key by encoding "hasNumber" and the number.
+                                        // (0, n) comes before (1, 0).
+                                        if (n != null)
+                                        {
+                                            return String.format("0:%03d", n);
+                                        }
+                                        return "1:" + s;
                                     })
+
                     )
 
                     .collect(Collectors.groupingBy(
@@ -693,6 +706,39 @@ public class FarmPanel extends JPanel
             add(entriesPanel);
         }
     }
+
+    private static Integer tryParsePlotNumber(String s)
+    {
+        // Accept "Plot 1", "plot 12", etc.
+        if (s == null)
+        {
+            return null;
+        }
+
+        String t = s.trim();
+        int space = t.lastIndexOf(' ');
+        if (space <= 0 || space == t.length() - 1)
+        {
+            return null;
+        }
+
+        String prefix = t.substring(0, space).trim();
+        if (!prefix.equalsIgnoreCase("Plot"))
+        {
+            return null;
+        }
+
+        String num = t.substring(space + 1).trim();
+        try
+        {
+            return Integer.parseInt(num);
+        }
+        catch (NumberFormatException e)
+        {
+            return null;
+        }
+    }
+
 
     private static boolean hasBrandOrange()
     {
