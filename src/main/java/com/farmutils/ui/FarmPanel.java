@@ -28,6 +28,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.Rectangle;
 import javax.swing.SwingUtilities;
+import java.awt.event.AWTEventListener;
 
 
 import java.awt.MouseInfo;
@@ -39,6 +40,8 @@ import javax.swing.JViewport;
 public class FarmPanel extends JPanel
 {
     private static final String PLACEHOLDER = "Filter patches…";
+
+    private Component filterBlurScope;
 
     private static final int PAD_X = 8;
     private static final int PAD_Y = 6;
@@ -106,6 +109,7 @@ public class FarmPanel extends JPanel
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
         list.setAlignmentX(Component.LEFT_ALIGNMENT);
+        list.setFocusable(true);
 
         // filter row first
         container.add(buildFilterRow());
@@ -232,13 +236,43 @@ public class FarmPanel extends JPanel
     {
         super.addNotify();
         installFindShortcut();
+
+        // Robust scope: whatever this panel is mounted into at the top.
+        filterBlurScope = SwingUtilities.getWindowAncestor(this);
+        if (filterBlurScope == null)
+        {
+            // Fallback: at least scope to the top-level Swing ancestor if window not available yet
+            filterBlurScope = getTopLevelAncestor();
+        }
+        if (filterBlurScope == null)
+        {
+            filterBlurScope = this;
+        }
+
+        installFilterBlurOnOutsideClick();
     }
+
+
+
 
     @Override
     public void removeNotify()
     {
+        uninstallFilterBlurOnOutsideClick();
         uninstallFindShortcut();
+        filterBlurScope = null;
         super.removeNotify();
+    }
+
+
+    private void uninstallFilterBlurOnOutsideClick()
+    {
+        Object o = getClientProperty("farmutils.filterBlurListener");
+        if (o instanceof AWTEventListener)
+        {
+            Toolkit.getDefaultToolkit().removeAWTEventListener((AWTEventListener) o);
+        }
+        putClientProperty("farmutils.filterBlurListener", null);
     }
 
     public void refreshUiFromConfig()
@@ -329,6 +363,66 @@ public class FarmPanel extends JPanel
         if (keyDispatcher == null) return;
         KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(keyDispatcher);
         keyDispatcher = null;
+    }
+
+    private void installFilterBlurOnOutsideClick()
+    {
+        final AWTEventListener listener = event ->
+        {
+            if (!(event instanceof MouseEvent))
+            {
+                return;
+            }
+
+            MouseEvent me = (MouseEvent) event;
+
+            // Use MOUSE_PRESSED so focus changes before mouseReleased actions fire.
+            if (me.getID() != MouseEvent.MOUSE_PRESSED)
+            {
+                return;
+            }
+
+            Component src = me.getComponent();
+            if (src == null)
+            {
+                return;
+            }
+
+            // Only react to clicks inside this FarmPanel tree (don’t steal focus globally).
+            Component scope = (filterBlurScope != null) ? filterBlurScope : SwingUtilities.getWindowAncestor(this);
+
+            // If the click is in a different window than this panel, ignore it.
+            Window srcWindow = SwingUtilities.getWindowAncestor(src);
+            Window scopeWindow = (scope instanceof Window) ? (Window) scope : SwingUtilities.getWindowAncestor(scope);
+
+            if (scopeWindow != null && srcWindow != scopeWindow)
+            {
+                return;
+            }
+
+
+            // Ignore clicks on the filter (or any of its children).
+            if (SwingUtilities.isDescendingFrom(src, filterField))
+            {
+                return;
+            }
+
+            // Only do work if the filter actually owns focus.
+            if (!filterField.isFocusOwner())
+            {
+                return;
+            }
+
+            // Move focus somewhere inert in this panel.
+            // list is a good default; fallback to the panel itself.
+            if (!list.requestFocusInWindow())
+            {
+                requestFocusInWindow();
+            }
+        };
+
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK);
+        putClientProperty("farmutils.filterBlurListener", listener);
     }
 
     public void rebuild()
