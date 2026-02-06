@@ -5,6 +5,7 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
+
 @ConfigGroup("farmutils")
 public interface FarmutilsConfig extends Config
 {
@@ -13,7 +14,6 @@ public interface FarmutilsConfig extends Config
             name = "Stale after (days)",
             description = "Show a patch as stale if it hasn't been updated in this many days."
     )
-
     default int staleDays()
     {
         return 7;
@@ -62,6 +62,126 @@ public interface FarmutilsConfig extends Config
         return false;
     }
 
+    @ConfigItem(
+            keyName = "globalScroll",
+            name = "Scroll anywhere (Patches)",
+            description = "When enabled, scrolling over the header area (tabs/filter/toolbar) scrolls the patch list.",
+            position = 4,
+            section = appearanceSection
+    )
+    default boolean globalScroll()
+    {
+        return false;
+    }
 
+    enum ScrollbarVisibility
+    {
+        NO,
+        SOMETIMES,
+        ALWAYS
+    }
+
+    @ConfigItem(
+            keyName = "scrollbarVisibility",
+            name = "Scrollbar",
+            description = "Scrollbar visibility for the patch list.",
+            position = 10,
+            section = appearanceSection
+    )
+    default ScrollbarVisibility scrollbarVisibility()
+    {
+        return ScrollbarVisibility.SOMETIMES;
+    }
+
+    @ConfigItem(
+            keyName = "scrollbarWidth",
+            name = "Scrollbar width",
+            description = "Scrollbar width in pixels. Valid range is 6–16.",
+            position = 11,
+            section = appearanceSection
+    )
+    default int scrollbarWidth()
+    {
+        return 8;
+    }
+
+    /**
+     * Scrollbar visual style.
+     *
+     * DARK: calm dark baseline; hover/press lighten.
+     * ACCENT: orange thumb with distinct hover/press states; neutral well.
+     */
+    enum ScrollbarStyle
+    {
+        DARK,
+        ACCENT
+    }
+
+    enum ScrollbarOutlineStyle
+    {
+        DARK,
+        ACCENT
+    }
+
+    @ConfigItem(
+            keyName = "scrollbarOutlineStyle",
+            name = "Scrollbar outline style",
+            description = "Outline colour of the scrollbar strip (track + buttons).",
+            position = 14, // place near other scrollbar options
+            section = appearanceSection
+    )
+    default ScrollbarOutlineStyle scrollbarOutlineStyle()
+    {
+        return ScrollbarOutlineStyle.DARK;
+    }
+
+
+    @ConfigItem(
+            keyName = "scrollbarColor",
+            name = "Scrollbar style",
+            description = "Visual style for the scrollbar and scroll buttons.",
+            position = 12,
+            section = appearanceSection
+    )
+    default ScrollbarStyle scrollbarColor()
+    {
+        return ScrollbarStyle.DARK;
+    }
+
+    @ConfigItem(
+            keyName = "showScrollButtons",
+            name = "Show scroll buttons",
+            description = "Show up/down scroll buttons on the scrollbar.",
+            position = 13,
+            section = appearanceSection
+    )
+    default boolean showScrollButtons()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "toolbarSolidBackground",
+            name = "Toolbar solid background",
+            description = "Use a solid background behind the toolbar area on the Patches tab.",
+            position = 15,
+            section = appearanceSection
+    )
+    default boolean toolbarSolidBackground()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "scrollbarWellBackground",
+            name = "Scrollbar well background",
+            description = "Paint a solid background behind the scrollbar (track + buttons).",
+            position = 16, // pick an appropriate slot in your appearance section
+            section = appearanceSection
+    )
+    default boolean scrollbarWellBackground()
+    {
+        return false;
+    }
 
 }

@@ -70,9 +70,9 @@ public class PatchRow extends JPanel
         Dimension indPref = indicator.getPreferredSize();
         int indH = indPref.height;
 
-        indicator.setPreferredSize(new Dimension(0, indH));
+        Dimension pref = getPreferredSize();
+        setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
         indicator.setMinimumSize(new Dimension(0, indH));
-        indicator.setMaximumSize(new Dimension(Integer.MAX_VALUE, indH));
 
 
         title.setPreferredSize(new Dimension(0, titleH));

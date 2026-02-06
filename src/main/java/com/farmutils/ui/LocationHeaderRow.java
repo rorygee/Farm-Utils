@@ -28,6 +28,9 @@ public final class LocationHeaderRow extends JPanel
         setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
         setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        Dimension pref = getPreferredSize();
+        setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
+
         JLabel label = new JLabel(locationName);
         label.setOpaque(false);
         label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);

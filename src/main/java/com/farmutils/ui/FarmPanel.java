@@ -8,10 +8,13 @@ import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 
+import javax.swing.Scrollable;
+import javax.swing.JViewport;
+import java.awt.Rectangle;
+
+
 import javax.inject.Inject;
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseListener;
@@ -26,10 +29,14 @@ import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.Rectangle;
 import javax.swing.SwingUtilities;
 import java.awt.event.AWTEventListener;
 
+import java.awt.event.MouseWheelEvent;
+import javax.swing.JScrollBar;
+import javax.swing.Scrollable;
 
 import java.awt.MouseInfo;
 import java.awt.PointerInfo;
@@ -39,9 +46,6 @@ import javax.swing.JViewport;
 
 public class FarmPanel extends JPanel
 {
-    private static final String PLACEHOLDER = "Filter patches…";
-
-    private Component filterBlurScope;
 
     private static final int PAD_X = 8;
     private static final int PAD_Y = 6;
@@ -58,17 +62,14 @@ public class FarmPanel extends JPanel
     private final ClientUI clientUI;
     private final FarmutilsConfig config;
 
-    private final JPanel container = new JPanel();
+    private final JScrollPane scrollPane;
 
-    private final Font baseFilterFont;
+    private final JPanel container = new ScrollContentPanel.ViewportWidthPanel();
 
     private final JPanel list = new JPanel();
-    private final JTextField filterField = new JTextField();
     private String filterText = "";
 
     private List<String> lastCanonicalGroupOrder = Collections.emptyList();
-
-    private KeyEventDispatcher keyDispatcher;
 
 
     private static final String PROP_GROUP_DRAG_HANDLE = "farmutils.groupDragHandle";
@@ -95,8 +96,6 @@ public class FarmPanel extends JPanel
         this.clientUI = clientUI;
         this.config = config;
 
-        this.baseFilterFont = filterField.getFont();
-
         // Painted “floor” for this view
         setOpaque(true);
         setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -105,324 +104,74 @@ public class FarmPanel extends JPanel
         container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
         container.setOpaque(false);
         container.setAlignmentX(Component.LEFT_ALIGNMENT);
+        container.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
         list.setAlignmentX(Component.LEFT_ALIGNMENT);
+        list.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
         list.setFocusable(true);
-
-        // filter row first
-        container.add(buildFilterRow());
-
         // then the list
         container.add(list);
 
-        // IMPORTANT: NORTH so the content grows vertically and the sidebar owns scrolling
-        add(container, BorderLayout.NORTH);
-    }
+        // Gate 3: only the patch list scrolls (internal scroll pane).
+        this.scrollPane = new JScrollPane(
+                container,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+        );
+
+        this.scrollPane.setViewportBorder(
+                BorderFactory.createEmptyBorder(0, 0, 0, 0)
+        );
+        this.scrollPane.setBorder(null);
+        this.scrollPane.setOpaque(false);
+        this.scrollPane.getViewport().setOpaque(false);
+        this.scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        UiScrollbars.apply(this.scrollPane, config);
+
+        add(this.scrollPane, BorderLayout.CENTER);
+
+        JPanel bottomDivider = new JPanel();
 
 
-    private JComponent buildFilterRow()
-    {
-        float scale = config.textScale().multiplier();
-        int h = Math.round(26 * scale);
+        JScrollBar vbar = this.scrollPane.getVerticalScrollBar();
 
-        JPanel bar = new JPanel(new BorderLayout());
-        bar.setOpaque(true);
-        bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
-
-        // field blends into the bar (no LAF border/chin)
-        filterField.setOpaque(false);
-        int padY = Math.max(4, Math.round(PAD_Y * scale));
-        int padX = Math.max(6, Math.round(PAD_X * scale));
-        filterField.setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
-
-        filterField.setCaretColor(ColorScheme.TEXT_COLOR);
-
-        filterField.setFont(UiFont.scaled(filterField.getFont(), scale, Font.PLAIN));
-
-        filterField.setPreferredSize(new Dimension(0, h));
-        filterField.setMinimumSize(new Dimension(0, h));
-        filterField.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
-
-        // placeholder
-        filterField.setText(PLACEHOLDER);
-        filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-
-        filterField.addFocusListener(new java.awt.event.FocusAdapter()
+        Runnable updateBottomDivider = () ->
         {
-            @Override
-            public void focusGained(java.awt.event.FocusEvent e)
-            {
-                if (PLACEHOLDER.equals(filterField.getText()))
-                {
-                    filterField.setText("");
-                    filterField.setForeground(ColorScheme.TEXT_COLOR);
-                }
-            }
+            int max = vbar.getMaximum();
+            int visible = vbar.getVisibleAmount();
+            boolean scrollable = visible > 0 && max > visible;
+            bottomDivider.setVisible(scrollable);
+        };
 
-            @Override
-            public void focusLost(java.awt.event.FocusEvent e)
-            {
-                if (filterField.getText().isEmpty())
-                {
-                    filterField.setText(PLACEHOLDER);
-                    filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-                }
-            }
-        });
+        vbar.getModel().addChangeListener(e -> updateBottomDivider.run());
+        SwingUtilities.invokeLater(updateBottomDivider);
 
-        filterField.getDocument().addDocumentListener(new DocumentListener()
-        {
-            private void changed()
-            {
-                String t = filterField.getText();
-                if (t == null || t.trim().isEmpty() || PLACEHOLDER.equals(t))
-                {
-                    filterText = "";
-                }
-                else
-                {
-                    filterText = t.trim();
-                }
-                rebuild();
-            }
+        bottomDivider.setPreferredSize(new Dimension(1, 1));
+        bottomDivider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        bottomDivider.setOpaque(true);
+        bottomDivider.setBackground(DIVIDER); // reuse your existing divider color
+        bottomDivider.setVisible(false);
 
-            @Override public void insertUpdate(DocumentEvent e) { changed(); }
-            @Override public void removeUpdate(DocumentEvent e) { changed(); }
-            @Override public void changedUpdate(DocumentEvent e) { changed(); }
-        });
+        add(bottomDivider, BorderLayout.SOUTH);
 
-        // ESC: if empty -> return focus to game; else -> clear filter
-        KeyStroke esc = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
-        filterField.getInputMap(JComponent.WHEN_FOCUSED).put(esc, "farmutils.esc");
-        filterField.getActionMap().put("farmutils.esc", new AbstractAction()
-        {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e)
-            {
-                String t = filterField.getText();
-                boolean effectivelyEmpty = (t == null) || t.trim().isEmpty() || PLACEHOLDER.equals(t);
+        applyScrollbarConfig();
 
-                if (effectivelyEmpty)
-                {
-                    clientUI.forceFocus();
-                    return;
-                }
-
-                filterField.setText("");
-                filterField.setForeground(ColorScheme.TEXT_COLOR);
-                filterText = "";
-                rebuild();
-            }
-        });
-
-        bar.add(filterField, BorderLayout.CENTER);
-
-        // bar + 1px divider under it
-        JPanel container = new JPanel();
-        container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
-        container.setOpaque(false);
-        container.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        container.add(bar);
-        container.add(divider());
-
-        return container;
-    }
-
-    @Override
-    public void addNotify()
-    {
-        super.addNotify();
-        installFindShortcut();
-
-        // Robust scope: whatever this panel is mounted into at the top.
-        filterBlurScope = SwingUtilities.getWindowAncestor(this);
-        if (filterBlurScope == null)
-        {
-            // Fallback: at least scope to the top-level Swing ancestor if window not available yet
-            filterBlurScope = getTopLevelAncestor();
-        }
-        if (filterBlurScope == null)
-        {
-            filterBlurScope = this;
-        }
-
-        installFilterBlurOnOutsideClick();
-    }
-
-
-
-
-    @Override
-    public void removeNotify()
-    {
-        uninstallFilterBlurOnOutsideClick();
-        uninstallFindShortcut();
-        filterBlurScope = null;
-        super.removeNotify();
-    }
-
-
-    private void uninstallFilterBlurOnOutsideClick()
-    {
-        Object o = getClientProperty("farmutils.filterBlurListener");
-        if (o instanceof AWTEventListener)
-        {
-            Toolkit.getDefaultToolkit().removeAWTEventListener((AWTEventListener) o);
-        }
-        putClientProperty("farmutils.filterBlurListener", null);
+        // Ensure the list is populated immediately on first open.
+        rebuild();
     }
 
     public void refreshUiFromConfig()
     {
-        float scale = config.textScale().multiplier();
-
-        // IMPORTANT: always scale from the unscaled base font
-        filterField.setFont(UiFont.scaled(baseFilterFont, scale, Font.PLAIN));
-
-        int h = Math.round(26 * scale);
-        filterField.setPreferredSize(new Dimension(0, h));
-        filterField.setMinimumSize(new Dimension(0, h));
-        filterField.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
-
-        int padY = Math.max(4, Math.round(PAD_Y * scale));
-        int padX = Math.max(6, Math.round(PAD_X * scale));
-        filterField.setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
-
-        // Keep placeholder style correct
-        if (PLACEHOLDER.equals(filterField.getText()))
-        {
-            filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-        }
-        else
-        {
-            filterField.setForeground(ColorScheme.TEXT_COLOR);
-        }
-
-        // Force layout refresh
-        filterField.revalidate();
-        filterField.repaint();
-        revalidate();
-        repaint();
-
-        // Rebuild list so headers/rows also pick up scale
+        applyScrollbarConfig();
         rebuild();
     }
 
-
-    private void installFindShortcut()
+    public void setFilterText(String text)
     {
-        if (keyDispatcher != null)
-        {
-            return;
-        }
-
-        final int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
-
-        keyDispatcher = e ->
-        {
-            if (!isShowing()) return false;
-            if (e.getID() != KeyEvent.KEY_PRESSED) return false;
-
-            if (e.getKeyCode() == KeyEvent.VK_F && (e.getModifiersEx() & menuMask) == menuMask)
-            {
-                // toggle back to game if filter already focused
-                if (filterField.isFocusOwner())
-                {
-                    clientUI.forceFocus();
-                    e.consume();
-                    return true;
-                }
-
-                filterField.requestFocusInWindow();
-
-                if (PLACEHOLDER.equals(filterField.getText()))
-                {
-                    filterField.setText("");
-                    filterField.setForeground(ColorScheme.TEXT_COLOR);
-                }
-                else
-                {
-                    filterField.selectAll();
-                }
-
-                e.consume();
-                return true;
-            }
-
-            return false;
-        };
-
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(keyDispatcher);
-    }
-
-    private void uninstallFindShortcut()
-    {
-        if (keyDispatcher == null) return;
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(keyDispatcher);
-        keyDispatcher = null;
-    }
-
-    private void installFilterBlurOnOutsideClick()
-    {
-        final AWTEventListener listener = event ->
-        {
-            if (!(event instanceof MouseEvent))
-            {
-                return;
-            }
-
-            MouseEvent me = (MouseEvent) event;
-
-            // Use MOUSE_PRESSED so focus changes before mouseReleased actions fire.
-            if (me.getID() != MouseEvent.MOUSE_PRESSED)
-            {
-                return;
-            }
-
-            Component src = me.getComponent();
-            if (src == null)
-            {
-                return;
-            }
-
-            // Only react to clicks inside this FarmPanel tree (don’t steal focus globally).
-            Component scope = (filterBlurScope != null) ? filterBlurScope : SwingUtilities.getWindowAncestor(this);
-
-            // If the click is in a different window than this panel, ignore it.
-            Window srcWindow = SwingUtilities.getWindowAncestor(src);
-            Window scopeWindow = (scope instanceof Window) ? (Window) scope : SwingUtilities.getWindowAncestor(scope);
-
-            if (scopeWindow != null && srcWindow != scopeWindow)
-            {
-                return;
-            }
-
-
-            // Ignore clicks on the filter (or any of its children).
-            if (SwingUtilities.isDescendingFrom(src, filterField))
-            {
-                return;
-            }
-
-            // Only do work if the filter actually owns focus.
-            if (!filterField.isFocusOwner())
-            {
-                return;
-            }
-
-            // Move focus somewhere inert in this panel.
-            // list is a good default; fallback to the panel itself.
-            if (!list.requestFocusInWindow())
-            {
-                requestFocusInWindow();
-            }
-        };
-
-        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK);
-        putClientProperty("farmutils.filterBlurListener", listener);
+        this.filterText = (text == null) ? "" : text.trim();
+        rebuild();
     }
 
     public void rebuild()
@@ -747,6 +496,40 @@ public class FarmPanel extends JPanel
         return parent.getComponentCount();
     }
 
+    private void applyScrollbarConfig()
+    {
+        // Scroll must remain functional even when the scrollbar is hidden.
+        // So we keep AS_NEEDED and hide the gutter visually when disabled.
+        FarmutilsConfig.ScrollbarVisibility visibility = config.scrollbarVisibility();
+
+        scrollPane.setVerticalScrollBarPolicy(
+                visibility == FarmutilsConfig.ScrollbarVisibility.ALWAYS
+                        ? ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS
+                        : ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+        );
+
+        // Re-apply UI each time so button visibility / colours update live.
+        UiScrollbars.apply(scrollPane, config);
+
+        JScrollBar vbar = scrollPane.getVerticalScrollBar();
+
+        if (visibility == FarmutilsConfig.ScrollbarVisibility.NO)
+        {
+            // Keep model alive so wheel/trackpoint scrolling still works; just remove the gutter.
+            vbar.setPreferredSize(new Dimension(0, Integer.MAX_VALUE));
+            vbar.setVisible(false);
+        }
+        else
+        {
+            int clampedWidth = Math.max(6, Math.min(16, config.scrollbarWidth()));
+            vbar.setPreferredSize(new Dimension(clampedWidth, Integer.MAX_VALUE));
+            vbar.setVisible(true);
+        }
+
+        scrollPane.revalidate();
+        scrollPane.repaint();
+
+    }
 
 
 
@@ -779,6 +562,33 @@ public class FarmPanel extends JPanel
             p.revalidate();
             p.repaint();
         }
+    }
+
+    public void scrollByWheel(MouseWheelEvent e) {
+
+
+            if (e == null)
+            {
+                return;
+            }
+
+            JScrollBar bar = scrollPane.getVerticalScrollBar();
+            if (bar == null) return;
+
+
+            int rotation = e.getWheelRotation();
+            int increment =
+                    (e.getScrollType() == MouseWheelEvent.WHEEL_BLOCK_SCROLL)
+                            ? bar.getBlockIncrement(rotation)
+                            : bar.getUnitIncrement(rotation);
+
+            int delta = increment * e.getUnitsToScroll();
+            int max = bar.getMaximum() - bar.getVisibleAmount();
+            int next = Math.max(0, Math.min(max, bar.getValue() + delta));
+
+            bar.setValue(next);
+            e.consume();
+
     }
 
 
@@ -1309,6 +1119,8 @@ public class FarmPanel extends JPanel
 
         }
 
+
+
         private int computeDropIndexFromSnapshot(MouseEvent e)
         {
             if (dropThresholds == null || dropThresholds.isEmpty())
@@ -1332,6 +1144,71 @@ public class FarmPanel extends JPanel
             return dropThresholds.size() - 1;
         }
 
+    }
+    private static final class ScrollContentPanel extends JPanel implements Scrollable
+    {
+        @Override
+        public Dimension getPreferredScrollableViewportSize()
+        {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
+        {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
+        {
+            return Math.max(visibleRect.height - 16, 16);
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth()
+        {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight()
+        {
+            return false;
+        }
+
+        private static final class ViewportWidthPanel extends JPanel implements Scrollable
+        {
+            @Override
+            public Dimension getPreferredScrollableViewportSize()
+            {
+                return getPreferredSize();
+            }
+
+            @Override
+            public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
+            {
+                return 16;
+            }
+
+            @Override
+            public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
+            {
+                return Math.max(visibleRect.height - 16, 16);
+            }
+
+            @Override
+            public boolean getScrollableTracksViewportWidth()
+            {
+                return true; // <-- the important bit
+            }
+
+            @Override
+            public boolean getScrollableTracksViewportHeight()
+            {
+                return false;
+            }
+        }
 
     }
 

@@ -13,6 +13,7 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 
@@ -32,6 +33,9 @@ public class FarmutilsPlugin extends Plugin
 	private ClientToolbar clientToolbar;
 
 	@Inject
+	private ClientUI clientUI;
+
+	@Inject
 	private FarmPanel farmPanel;
 
 	private FarmRootPanel rootPanel;
@@ -46,6 +50,7 @@ public class FarmutilsPlugin extends Plugin
 	{
 		rootPanel = new FarmRootPanel(
 				config,
+				clientUI,
 				farmPanel,
 				new FarmStubPanel("Routes", "Route planning will be added later."),
 				new FarmStubPanel("Calc", "Profit and XP calculations will be added later."),
@@ -74,9 +79,6 @@ public class FarmutilsPlugin extends Plugin
 			navButton = null;
 		}
 	}
-
-
-
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged gameStateChanged)
