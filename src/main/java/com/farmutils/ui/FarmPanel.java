@@ -3,6 +3,8 @@ package com.farmutils.ui;
 import com.farmutils.FarmutilsConfig;
 import com.farmutils.model.PatchId;
 import com.farmutils.model.PatchQualifier;
+import com.farmutils.model.PatchState;
+import com.farmutils.model.PatchView;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
 import net.runelite.client.ui.ClientUI;
@@ -17,8 +19,7 @@ import java.awt.Rectangle;
 import javax.inject.Inject;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseListener;
+import java.awt.event.*;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,12 +29,8 @@ import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Point;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseWheelEvent;
 import java.awt.Rectangle;
 import javax.swing.SwingUtilities;
-import java.awt.event.AWTEventListener;
 
 import java.awt.event.MouseWheelEvent;
 import javax.swing.JScrollBar;
@@ -80,6 +77,8 @@ public class FarmPanel extends JPanel
     private static final String PROP_GROUP_DRAG_HANDLE = "farmutils.groupDragHandle";
 
     private final GroupDragController groupDrag = new GroupDragController();
+
+    private final PatchDragController patchDrag = new PatchDragController();
 
     private final JPanel dropLine = new JPanel();
     {
@@ -203,6 +202,8 @@ public class FarmPanel extends JPanel
 
             Map<String, List<PatchId>> grouped = Arrays.stream(PatchId.values())
                 .filter(id -> !(config.hideQuestPatches() && id.getQualifier() == PatchQualifier.QUEST))
+                    .filter(id -> !(uiStateStore.getViewMode() == UiStateStore.ListViewMode.ACTIVE && uiStateStore.isPatchDisabled(id)))
+
                 .sorted(
                             Comparator.comparing(PatchId::getGroup)
                                     .thenComparing(id -> {
@@ -275,7 +276,13 @@ public class FarmPanel extends JPanel
 
                 if (!firstGroup)
                 {
-                    groupBlock.add(divider());
+                    JPanel entriesPanel = new JPanel();
+                    entriesPanel.setLayout(new BoxLayout(entriesPanel, BoxLayout.Y_AXIS));
+                    entriesPanel.setOpaque(false);
+                    entriesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    entriesPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+                    // First divider between header and body
+                    entriesPanel.add(divider());
                 }
                 firstGroup = false;
 
@@ -284,7 +291,11 @@ public class FarmPanel extends JPanel
                 // while filtering, show as expanded (don’t imply hidden results)
                 boolean collapsedForHeader = hasFilter ? false : collapsed;
 
-                JComponent header = fullWidth(createGroupHeader(groupName, collapsedForHeader));
+                AggregateState aggregate = collapsedForHeader
+                        ? aggregateStateForCollapsedHeader(visibleIds)
+                        : AggregateState.UNKNOWN;
+
+                JComponent header = fullWidth(createGroupHeader(groupName, collapsedForHeader, aggregate));
                 groupBlock.add(header);
 
 // Bind drag handle for this group (handle-only; does not interfere with expand/collapse).
@@ -298,6 +309,12 @@ public class FarmPanel extends JPanel
                 if (showBody)
                 {
                     groupBlock.add(divider());
+
+                    JPanel entriesPanel = new JPanel();
+                    entriesPanel.setLayout(new BoxLayout(entriesPanel, BoxLayout.Y_AXIS));
+                    entriesPanel.setOpaque(false);
+                    entriesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    entriesPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 
                     // Render-only location headers: shown only when 2+ entries share the same locationKey.
                     Map<String, Long> locationCounts = visibleIds.stream()
@@ -323,6 +340,15 @@ public class FarmPanel extends JPanel
                         }
 
                         JComponent rowWrap = fullWidth(new PatchRow(id, store, config, this::rebuild));
+
+                        rowWrap.putClientProperty("farmutils.groupName", groupName);
+                        rowWrap.putClientProperty("farmutils.patchId", id);
+
+                                // Filter mode disables dragging (avoids hidden rows).
+                                        if (!hasFilter)
+                        {
+                                    patchDrag.bind(rowWrap, entriesPanel, groupName, visibleIds);
+                        }
                         if (isMultiSlot)
                         {
                             // Subtle indent under a location header. Wrapper is used to preserve PatchRow layout contract.
@@ -334,13 +360,15 @@ public class FarmPanel extends JPanel
 
                     for (int i = 0; i < bodyItems.size(); i++)
                     {
-                        groupBlock.add(bodyItems.get(i));
+                        entriesPanel.add(bodyItems.get(i));
                         if (i < bodyItems.size() - 1)
                         {
-                            groupBlock.add(divider());
+                            entriesPanel.add(divider());
                         }
                     }
+                    groupBlock.add(entriesPanel);
                 }
+
 
                 Dimension pref = groupBlock.getPreferredSize();
                 groupBlock.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
@@ -412,7 +440,18 @@ public class FarmPanel extends JPanel
         return handle;
     }
 
-    private Component createGroupHeader(String groupName, boolean collapsed)
+
+    private enum AggregateState
+    {
+        DEAD,
+        READY,
+        GROWING,
+        EMPTY,
+        UNKNOWN
+    }
+
+
+    private Component createGroupHeader(String groupName, boolean collapsed, AggregateState aggregate)
     {
         float scale = config.textScale().multiplier();
         boolean emphasize = config.emphasizeHeaders();
@@ -425,7 +464,7 @@ public class FarmPanel extends JPanel
         JLabel triLabel = new JLabel(tri);
         triLabel.setOpaque(false);
         triLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 6));
-        triLabel.setForeground(collapsed ? TRI_DISABLED : HEADER_ORANGE);
+        triLabel.setForeground(collapsed ? aggregateColor(aggregate) : HEADER_ORANGE);
         triLabel.setFont(UiFont.scaled(triLabel.getFont(), headerScale, style));
 
         JLabel textLabel = new JLabel(groupName);
@@ -478,6 +517,73 @@ public class FarmPanel extends JPanel
         header.add(dragHandle);
 
         return header;
+    }
+
+    private AggregateState aggregateStateForCollapsedHeader(List<PatchId> visibleIds)
+    {
+        boolean hasDead = false;
+        boolean hasReady = false;
+        boolean hasGrowing = false;
+        boolean hasEmpty = false;
+
+        for (PatchId id : visibleIds)
+        {
+            PatchView view = store.view(id);
+            if (!view.getRecord().isPresent())
+            {
+                continue; // Unknown
+            }
+            PatchState state = view.getRecord().get().getState();
+
+            if (state == null)
+            {
+                continue;
+            }
+
+            switch (state)
+            {
+                case DEAD:
+                    hasDead = true;
+                    break;
+                case READY:
+                    hasReady = true;
+                    break;
+                case GROWING:
+                    hasGrowing = true;
+                    break;
+                case EMPTY:
+                    hasEmpty = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Explicit precedence (strongest first)
+        if (hasDead)    return AggregateState.DEAD;
+        if (hasReady)   return AggregateState.READY;
+        if (hasGrowing) return AggregateState.GROWING;
+        if (hasEmpty)   return AggregateState.EMPTY;
+
+        return AggregateState.UNKNOWN;
+    }
+
+    private Color aggregateColor(AggregateState aggregate)
+    {
+        switch (aggregate)
+        {
+            case DEAD:
+                return new Color(150, 60, 60);
+            case READY:
+                return new Color(90, 150, 90);
+            case GROWING:
+                return new Color(120, 120, 60);
+            case EMPTY:
+                return new Color(100, 100, 100);
+            case UNKNOWN:
+            default:
+                return TRI_DISABLED;
+        }
     }
 
 
@@ -1267,5 +1373,149 @@ public class FarmPanel extends JPanel
         }
 
     }
+
+    // -------------------------------------------------------------
+// Patch Row Drag Controller (localized, no persistence yet)
+// -------------------------------------------------------------
+    private class PatchDragController
+    {
+        private JComponent dragging;
+        private JPanel container;
+        private String groupName;
+        private List<PatchId> currentOrder;
+
+        private int startY;
+        private boolean active;
+
+        void bind(JComponent row,
+                  JPanel container,
+                  String groupName,
+                  List<PatchId> visibleIds)
+        {
+            row.addMouseListener(new MouseAdapter()
+            {
+                @Override
+                public void mousePressed(MouseEvent e)
+                {
+                    dragging = row;
+                    PatchDragController.this.container = container;
+                    PatchDragController.this.groupName = groupName;
+                    currentOrder = new ArrayList<>(visibleIds);
+
+                    startY = e.getYOnScreen();
+                    active = false;
+                }
+
+                @Override
+                public void mouseReleased(MouseEvent e)
+                {
+                    if (!active || dragging == null)
+                    {
+                        reset();
+                        return;
+                    }
+
+                    container.remove(dropLine);
+                    container.revalidate();
+                    container.repaint();
+
+                    commitDrop(e.getPoint());
+
+                    reset();
+                }
+            });
+
+            row.addMouseMotionListener(new MouseMotionAdapter()
+            {
+                @Override
+                public void mouseDragged(MouseEvent e)
+                {
+                    if (dragging == null)
+                    {
+                        return;
+                    }
+
+                    int dy = Math.abs(e.getYOnScreen() - startY);
+
+                    if (!active && dy > 4)
+                    {
+                        active = true;
+                    }
+
+                    if (!active)
+                    {
+                        return;
+                    }
+
+                    updateDropIndicator(e);
+                }
+            });
+        }
+
+        private void updateDropIndicator(MouseEvent e)
+        {
+            container.remove(dropLine);
+
+            int y = e.getY();
+            int index = resolveDropIndex(y);
+
+            container.add(dropLine, index);
+            container.revalidate();
+            container.repaint();
+        }
+
+        private int resolveDropIndex(int mouseY)
+        {
+            Component[] components = container.getComponents();
+            int slot = 0;
+
+            for (Component c : components)
+            {
+                if (!(c instanceof JComponent))
+                    continue;
+
+                if (c == dragging || c == dropLine)
+                    continue;
+
+                Rectangle bounds = c.getBounds();
+
+                if (mouseY < bounds.y + bounds.height / 2)
+                {
+                    return slot;
+                }
+
+                slot++;
+            }
+
+            return slot;
+        }
+
+        private void commitDrop(Point p)
+        {
+            int dropIndex = resolveDropIndex(p.y);
+
+            PatchId draggedId = (PatchId) dragging.getClientProperty("farmutils.patchId");
+
+            List<PatchId> next = new ArrayList<>(currentOrder);
+            next.remove(draggedId);
+
+            dropIndex = Math.min(dropIndex, next.size());
+            next.add(dropIndex, draggedId);
+
+            uiStateStore.getEntryOrder().put(groupName, next);
+
+            rebuild();
+        }
+
+        private void reset()
+        {
+            dragging = null;
+            container = null;
+            groupName = null;
+            currentOrder = null;
+            active = false;
+        }
+    }
+
 
 }

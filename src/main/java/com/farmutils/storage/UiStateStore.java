@@ -6,10 +6,7 @@ import javax.inject.Singleton;
 import com.farmutils.model.PatchId;
 import net.runelite.client.config.ConfigManager;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Singleton
 public class UiStateStore
@@ -26,6 +23,15 @@ public class UiStateStore
 
     @Inject
     private ConfigManager configManager;
+
+    private final Set<PatchId> disabledPatches = new HashSet<>();
+private ListViewMode viewMode = ListViewMode.ALL;
+
+        public enum ListViewMode
+{
+        ALL,
+                ACTIVE // placeholder for future (e.g., hide disabled/irrelevant)
+                    }
 
     public boolean isGroupCollapsed(String groupName)
     {
@@ -51,5 +57,31 @@ public class UiStateStore
     public void toggleGroupCollapsed(String groupName)
     {
         setGroupCollapsed(groupName, !isGroupCollapsed(groupName));
+    }
+    public ListViewMode getViewMode()
+{
+        return viewMode;
+    }
+
+        public void setViewMode(ListViewMode viewMode)
+{
+        this.viewMode = viewMode != null ? viewMode : ListViewMode.ALL;
+    }
+
+        public boolean isPatchDisabled(PatchId id)
+{
+        return disabledPatches.contains(id);
+    }
+
+        public void setPatchDisabled(PatchId id, boolean disabled)
+{
+        if (disabled)
+            {
+                        disabledPatches.add(id);
+        }
+        else
+        {
+                    disabledPatches.remove(id);
+        }
     }
 }
