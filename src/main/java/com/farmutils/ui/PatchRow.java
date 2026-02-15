@@ -20,6 +20,8 @@ public class PatchRow extends JPanel
     private static final int PAD_X = 8;
     private static final int PAD_Y = 6;
 
+    public static final String PROP_PATCH_DRAG_HANDLE = "farmutils.patchDragHandle";
+
     public PatchRow(PatchId id, PatchStore store, FarmutilsConfig config, Runnable onChange)
     {
         PatchView view = store.view(id);
@@ -85,6 +87,16 @@ public class PatchRow extends JPanel
 
         add(leftCol, BorderLayout.CENTER);
 
+        // Drag handle (hidden unless reorder mode is enabled by caller).
+                JLabel dragHandle = new JLabel("⋮⋮");
+        dragHandle.setOpaque(false);
+        dragHandle.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
+        dragHandle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        dragHandle.setVisible(false);
+        dragHandle.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+        putClientProperty(PROP_PATCH_DRAG_HANDLE, dragHandle);
+        add(dragHandle, BorderLayout.EAST);
+
         String tooltip = buildTooltip(view);
         setToolTipText(tooltip);
         title.setToolTipText(tooltip);
@@ -118,6 +130,10 @@ public class PatchRow extends JPanel
             @Override
             public void mousePressed(MouseEvent e)
             {
+                if (e.isConsumed())
+                {
+                    return;
+                }
                 if (e.isPopupTrigger())
                 {
                     menu.show(e.getComponent(), e.getX(), e.getY());
@@ -127,12 +143,25 @@ public class PatchRow extends JPanel
             @Override
             public void mouseReleased(MouseEvent e)
             {
+                if (e.isConsumed())
+                {
+                    return;
+                }
                 if (e.isPopupTrigger())
                 {
                     menu.show(e.getComponent(), e.getX(), e.getY());
                 }
             }
         });
+    }
+
+    public void setReorderHandleVisible(boolean visible)
+    {
+        Object h = getClientProperty(PROP_PATCH_DRAG_HANDLE);
+        if (h instanceof JComponent)
+            {
+                        ((JComponent) h).setVisible(visible);
+        }
     }
 
     private static String indicatorText(PatchView view)

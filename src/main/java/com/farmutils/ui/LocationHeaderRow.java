@@ -16,6 +16,8 @@ public final class LocationHeaderRow extends JPanel
     private static final int PAD_X = 8;
     private static final int PAD_Y = 4;
 
+    public static final String PROP_PATCH_DRAG_HANDLE = "farmutils.patchDragHandle";
+
     public LocationHeaderRow(String locationName, FarmutilsConfig config)
     {
         float scale = config.textScale().multiplier();
@@ -36,5 +38,22 @@ public final class LocationHeaderRow extends JPanel
         label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         label.setFont(UiFont.scaled(label.getFont(), scale * 0.92f, Font.PLAIN));
         add(label, BorderLayout.CENTER);
+
+        JLabel dragHandle = new JLabel("⋮⋮");
+        dragHandle.setOpaque(false);
+        dragHandle.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
+        dragHandle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        dragHandle.setVisible(false);
+        dragHandle.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+        putClientProperty(PROP_PATCH_DRAG_HANDLE, dragHandle);
+        add(dragHandle, BorderLayout.EAST);
+    }
+    public void setReorderHandleVisible(boolean visible)
+    {
+        Object h = getClientProperty(PROP_PATCH_DRAG_HANDLE);
+        if (h instanceof JComponent)
+            {
+                        ((JComponent) h).setVisible(visible);
+        }
     }
 }

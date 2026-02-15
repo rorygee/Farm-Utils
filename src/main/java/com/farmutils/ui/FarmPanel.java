@@ -75,6 +75,31 @@ public class FarmPanel extends JPanel
 
 
     private static final String PROP_GROUP_DRAG_HANDLE = "farmutils.groupDragHandle";
+    private static final String PROP_PATCH_DRAG_HANDLE = "farmutils.patchDragHandle";
+
+    private static final String PROP_LOCATION_KEY = "farmutils.locationKey";
+    private static final String PROP_GROUP_NAME = "farmutils.groupName";
+    private static final String PROP_PATCH_ID = "farmutils.patchId";
+
+    private enum DragMode
+    {
+        ROW,
+        LOCATION_BLOCK
+    }
+
+    private static class BlockStart
+    {
+        final JComponent component;
+        final PatchId firstPatchId;
+        final String locationKeyOrNull;
+
+        BlockStart(JComponent component, PatchId firstPatchId, String locationKeyOrNull)
+        {
+            this.component = component;
+            this.firstPatchId = firstPatchId;
+            this.locationKeyOrNull = locationKeyOrNull;
+        }
+    }
 
     private final GroupDragController groupDrag = new GroupDragController();
 
@@ -295,14 +320,19 @@ public class FarmPanel extends JPanel
                         ? aggregateStateForCollapsedHeader(visibleIds)
                         : AggregateState.UNKNOWN;
 
-                JComponent header = fullWidth(createGroupHeader(groupName, collapsedForHeader, aggregate));
+                boolean reorderEnabled = uiStateStore.isReorderModeEnabled();
+                JComponent header = fullWidth(createGroupHeader(groupName, collapsedForHeader, aggregate, reorderEnabled));
                 groupBlock.add(header);
 
-// Bind drag handle for this group (handle-only; does not interfere with expand/collapse).
-                Object h = header.getClientProperty(PROP_GROUP_DRAG_HANDLE);
-                if (h instanceof JComponent)
+                // Bind drag handle for this group (handle-only; does not interfere with expand/collapse).
+                // Reorder mode is runtime-only and gates *all* drag behaviors.
+                if (!hasFilter && uiStateStore.isReorderModeEnabled())
                 {
-                    groupDrag.bind((JComponent) h, list, groupBlock);
+                    Object h = header.getClientProperty(PROP_GROUP_DRAG_HANDLE);
+                    if (h instanceof JComponent)
+                    {
+                        groupDrag.bind((JComponent) h, list, groupBlock);
+                    }
                 }
 
                 boolean showBody = (!collapsed || hasFilter);
@@ -336,18 +366,47 @@ public class FarmPanel extends JPanel
                         if ((isMultiSlot || forceLocationHeader) && seenLocations.add(locationKey))
                         {
                             String locationName = id.getLocationName() != null ? id.getLocationName() : id.getLabel();
-                            bodyItems.add(fullWidth(new LocationHeaderRow(locationName, config)));
+                            LocationHeaderRow locHeader = new LocationHeaderRow(locationName, config);
+                            locHeader.setReorderHandleVisible(!hasFilter && uiStateStore.isReorderModeEnabled());
+                            JComponent headerWrap = fullWidth(locHeader);
+                            headerWrap.putClientProperty(PROP_GROUP_NAME, groupName);
+                            headerWrap.putClientProperty(PROP_LOCATION_KEY, locationKey);
+
+                            // Reorder mode: header drags the entire location block (header + all rows under it).
+                            if (!hasFilter && uiStateStore.isReorderModeEnabled())
+                            {
+                                Object hh = headerWrap.getClientProperty(PROP_PATCH_DRAG_HANDLE);
+                                if (hh instanceof JComponent)
+                                {
+                                    patchDrag.bindLocationHeader((JComponent) hh, headerWrap, entriesPanel, groupName, visibleIds, locationKey);
+                                }
+                            }
+
+                            bodyItems.add(headerWrap);
                         }
 
-                        JComponent rowWrap = fullWidth(new PatchRow(id, store, config, this::rebuild));
+                        PatchRow row = new PatchRow(id, store, config, this::rebuild);
+                        boolean headerOwnsThisRow = (isMultiSlot || forceLocationHeader);
+                        row.setReorderHandleVisible(reorderEnabled && !headerOwnsThisRow);
 
-                        rowWrap.putClientProperty("farmutils.groupName", groupName);
-                        rowWrap.putClientProperty("farmutils.patchId", id);
+                        JComponent rowWrap = fullWidth(row);
 
-                                // Filter mode disables dragging (avoids hidden rows).
-                                        if (!hasFilter)
+
+                        rowWrap.putClientProperty(PROP_GROUP_NAME, groupName);
+                        rowWrap.putClientProperty(PROP_PATCH_ID, id);
+                        rowWrap.putClientProperty(PROP_LOCATION_KEY, locationKey);
+
+                        // Filter mode disables dragging (avoids hidden rows).
+                        // Reorder mode gates row dragging.
+                        // For multi-slot / forced-header locations, prefer dragging the header so the header
+                        // stays attached to its patch(es).
+                        if (!hasFilter && uiStateStore.isReorderModeEnabled() && !(isMultiSlot || forceLocationHeader))
                         {
-                                    patchDrag.bind(rowWrap, entriesPanel, groupName, visibleIds);
+                            Object rh = rowWrap.getClientProperty(PROP_PATCH_DRAG_HANDLE);
+                            if (rh instanceof JComponent)
+                            {
+                                patchDrag.bindRow((JComponent) rh, rowWrap, entriesPanel, groupName, visibleIds);
+                            }
                         }
                         if (isMultiSlot)
                         {
@@ -451,8 +510,8 @@ public class FarmPanel extends JPanel
     }
 
 
-    private Component createGroupHeader(String groupName, boolean collapsed, AggregateState aggregate)
-    {
+    private Component createGroupHeader(String groupName, boolean collapsed, AggregateState aggregate, boolean reorderEnabled)
+{
         float scale = config.textScale().multiplier();
         boolean emphasize = config.emphasizeHeaders();
 
@@ -509,6 +568,7 @@ public class FarmPanel extends JPanel
 
         // RIGHT: drag handle only
         JComponent dragHandle = createGroupDragHandle();
+        dragHandle.setVisible(reorderEnabled);
         dragHandle.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
 
         header.putClientProperty(PROP_GROUP_DRAG_HANDLE, dragHandle);
@@ -615,6 +675,12 @@ public class FarmPanel extends JPanel
             if (h != null)
             {
                 wrap.putClientProperty(PROP_GROUP_DRAG_HANDLE, h);
+            }
+
+            Object ph = ((JComponent) child).getClientProperty(PROP_PATCH_DRAG_HANDLE);
+            if (ph != null)
+            {
+                        wrap.putClientProperty(PROP_PATCH_DRAG_HANDLE, ph);
             }
         }
 
@@ -1379,36 +1445,62 @@ public class FarmPanel extends JPanel
 // -------------------------------------------------------------
     private class PatchDragController
     {
+        private static final String PROP_PATCH_ID = "farmutils.patchId";
+        private static final String PROP_LOCATION_KEY = "farmutils.locationKey";
+
         private JComponent dragging;
         private JPanel container;
         private String groupName;
         private List<PatchId> currentOrder;
 
+        private DragMode dragMode;
+        private String draggingLocationKey;
+        private List<PatchId> draggingBlockIds;
+
         private int startY;
         private boolean active;
 
-        void bind(JComponent row,
-                  JPanel container,
-                  String groupName,
-                  List<PatchId> visibleIds)
+        void bindRow(JComponent handle, JComponent rowWrap, JPanel container, String groupName, List<PatchId> visibleIds)
         {
-            row.addMouseListener(new MouseAdapter()
+            // Mouse events are delivered to the deepest child component, not the parent.
+            // Bind listeners to the row wrapper *and* all descendants so dragging works anywhere on the row.
+            final Cursor moveCursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR);
+
+            MouseAdapter mouse = new MouseAdapter()
             {
                 @Override
                 public void mousePressed(MouseEvent e)
                 {
-                    dragging = row;
+                    if (!SwingUtilities.isLeftMouseButton(e))
+                    {
+                        return;
+                    }
+
+                    dragging = rowWrap;
                     PatchDragController.this.container = container;
                     PatchDragController.this.groupName = groupName;
                     currentOrder = new ArrayList<>(visibleIds);
 
+                    dragMode = DragMode.ROW;
+                    draggingLocationKey = null;
+                    draggingBlockIds = null;
+
                     startY = e.getYOnScreen();
                     active = false;
+
+                    // Allow other listeners to ignore drag-in-progress.
+                    e.consume();
                 }
 
                 @Override
                 public void mouseReleased(MouseEvent e)
                 {
+                    if (!SwingUtilities.isLeftMouseButton(e))
+                    {
+                        reset();
+                        return;
+                    }
+
                     if (!active || dragging == null)
                     {
                         reset();
@@ -1419,13 +1511,18 @@ public class FarmPanel extends JPanel
                     container.revalidate();
                     container.repaint();
 
-                    commitDrop(e.getPoint());
+                    // Convert to container coordinate space (row events are row-relative).
+                    Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), container);
+                    commitDrop(p);
+
+                    // Prevent any click actions from firing after a drag.
+                    e.consume();
 
                     reset();
                 }
-            });
+            };
 
-            row.addMouseMotionListener(new MouseMotionAdapter()
+            MouseMotionAdapter motion = new MouseMotionAdapter()
             {
                 @Override
                 public void mouseDragged(MouseEvent e)
@@ -1447,54 +1544,223 @@ public class FarmPanel extends JPanel
                         return;
                     }
 
-                    updateDropIndicator(e);
+                    // Convert to container coordinate space (row events are row-relative).
+                    Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), container);
+                    updateDropIndicator(p.y);
+
+                    // Suppress any other click/press behaviors while dragging.
+                    e.consume();
                 }
-            });
+            };
+
+            bindDragSurface(handle, mouse, motion, moveCursor);
         }
 
-        private void updateDropIndicator(MouseEvent e)
+        void bindLocationHeader(JComponent handle, JComponent headerWrap, JPanel container, String groupName, List<PatchId> visibleIds, String locationKey)
+        {
+            final Cursor moveCursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR);
+
+            MouseAdapter mouse = new MouseAdapter()
+            {
+                @Override
+                public void mousePressed(MouseEvent e)
+                {
+                    if (!SwingUtilities.isLeftMouseButton(e))
+                    {
+                        return;
+                    }
+
+                    dragging = headerWrap;
+                    PatchDragController.this.container = container;
+                    PatchDragController.this.groupName = groupName;
+                    currentOrder = new ArrayList<>(visibleIds);
+
+                    dragMode = DragMode.LOCATION_BLOCK;
+                    draggingLocationKey = locationKey;
+                    draggingBlockIds = visibleIds.stream()
+                            .filter(id -> Objects.equals(locationKey, id.getLocationKey()))
+                            .collect(Collectors.toList());
+
+                    startY = e.getYOnScreen();
+                    active = false;
+
+                    e.consume();
+                }
+
+                @Override
+                public void mouseReleased(MouseEvent e)
+                {
+                    if (!SwingUtilities.isLeftMouseButton(e))
+                    {
+                        reset();
+                        return;
+                    }
+
+                    if (!active || dragging == null)
+                    {
+                        reset();
+                        return;
+                    }
+
+                    container.remove(dropLine);
+                    container.revalidate();
+                    container.repaint();
+
+                    Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), container);
+                    commitDrop(p);
+
+                    e.consume();
+                    reset();
+                }
+            };
+
+            MouseMotionAdapter motion = new MouseMotionAdapter()
+            {
+                @Override
+                public void mouseDragged(MouseEvent e)
+                {
+                    if (dragging == null)
+                    {
+                        return;
+                    }
+
+                    int dy = Math.abs(e.getYOnScreen() - startY);
+                    if (!active && dy > 4)
+                    {
+                        active = true;
+                    }
+                    if (!active)
+                    {
+                        return;
+                    }
+
+                    Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), container);
+                    updateDropIndicator(p.y);
+
+                    e.consume();
+                }
+            };
+
+            bindDragSurface(handle, mouse, motion, moveCursor);
+        }
+
+        private void bindDragSurface(JComponent root,
+                                     MouseListener mouse,
+                                     MouseMotionListener motion,
+                                     Cursor cursor)
+        {
+            root.setCursor(cursor);
+            root.addMouseListener(mouse);
+            root.addMouseMotionListener(motion);
+
+            for (Component c : root.getComponents())
+            {
+                if (c instanceof JComponent)
+                {
+                    bindDragSurface((JComponent) c, mouse, motion, cursor);
+                }
+            }
+        }
+
+        private void updateDropIndicator(int mouseYInContainer)
         {
             container.remove(dropLine);
 
-            int y = e.getY();
-            int index = resolveDropIndex(y);
+            int componentIndex = (dragMode == DragMode.LOCATION_BLOCK)
+                    ? resolveBlockDropComponentIndex(mouseYInContainer)
+                    : resolveDropComponentIndex(mouseYInContainer);
 
-            container.add(dropLine, index);
+            container.add(dropLine, componentIndex);
             container.revalidate();
             container.repaint();
         }
 
-        private int resolveDropIndex(int mouseY)
+        /**
+         * Returns the *component index* into {@code container} for where to insert the dropLine.
+         * Only Patch rows (components with PROP_PATCH_ID) are valid targets.
+         * Location headers and dividers are ignored.
+         */
+        private int resolveDropComponentIndex(int mouseY)
         {
-            Component[] components = container.getComponents();
-            int slot = 0;
+            java.util.List<JComponent> rows = validRowComponentsInOrder();
 
-            for (Component c : components)
+            if (rows.isEmpty())
             {
-                if (!(c instanceof JComponent))
-                    continue;
+                return container.getComponentCount();
+            }
 
-                if (c == dragging || c == dropLine)
-                    continue;
+            for (JComponent row : rows)
+            {
+                Rectangle b = row.getBounds();
+                int mid = b.y + (b.height / 2);
+                if (mouseY < mid)
+                {
+                    return container.getComponentZOrder(row);
+                }
+            }
 
-                Rectangle bounds = c.getBounds();
+            return container.getComponentCount();
+        }
 
-                if (mouseY < bounds.y + bounds.height / 2)
+        private int resolveDropSlotIndex(int mouseY)
+        {
+            java.util.List<JComponent> rows = validRowComponentsInOrder();
+            int slot = 0;
+            for (JComponent row : rows)
+            {
+                Rectangle b = row.getBounds();
+                int mid = b.y + (b.height / 2);
+                if (mouseY < mid)
                 {
                     return slot;
                 }
-
                 slot++;
             }
-
             return slot;
+        }
+
+        private java.util.List<JComponent> validRowComponentsInOrder()
+        {
+            java.util.List<JComponent> out = new java.util.ArrayList<>();
+            for (Component c : container.getComponents())
+            {
+                if (!(c instanceof JComponent))
+                {
+                    continue;
+                }
+
+                if (c == dragging || c == dropLine)
+                {
+                    continue;
+                }
+
+                PatchId pid = (PatchId) ((JComponent) c).getClientProperty(PROP_PATCH_ID);
+                if (pid == null)
+                {
+                    // Location headers/dividers have no patchId and are not valid drop targets.
+                    continue;
+                }
+
+                out.add((JComponent) c);
+            }
+            return out;
         }
 
         private void commitDrop(Point p)
         {
-            int dropIndex = resolveDropIndex(p.y);
+            if (dragMode == DragMode.LOCATION_BLOCK)
+            {
+                commitLocationBlockDrop(p);
+                return;
+            }
 
-            PatchId draggedId = (PatchId) dragging.getClientProperty("farmutils.patchId");
+            int dropIndex = resolveDropSlotIndex(p.y);
+
+            PatchId draggedId = (PatchId) dragging.getClientProperty(PROP_PATCH_ID);
+            if (draggedId == null)
+            {
+                return;
+            }
 
             List<PatchId> next = new ArrayList<>(currentOrder);
             next.remove(draggedId);
@@ -1507,12 +1773,153 @@ public class FarmPanel extends JPanel
             rebuild();
         }
 
+        private void commitLocationBlockDrop(Point p)
+        {
+            if (draggingLocationKey == null || draggingBlockIds == null || draggingBlockIds.isEmpty())
+            {
+                return;
+            }
+
+            // Determine which block start we are dropping before.
+            java.util.List<BlockStart> starts = blockStartsInOrder();
+
+            int targetStartIdx = resolveBlockDropStartIndex(starts, p.y);
+
+            List<PatchId> next = new ArrayList<>(currentOrder);
+            next.removeAll(draggingBlockIds);
+
+            int insertAt = next.size();
+            if (targetStartIdx >= 0 && targetStartIdx < starts.size())
+            {
+                BlockStart target = starts.get(targetStartIdx);
+                PatchId anchor = target.firstPatchId;
+                int idx = next.indexOf(anchor);
+                if (idx >= 0)
+                {
+                    insertAt = idx;
+                }
+            }
+
+            insertAt = Math.max(0, Math.min(insertAt, next.size()));
+            next.addAll(insertAt, draggingBlockIds);
+
+            uiStateStore.getEntryOrder().put(groupName, next);
+            rebuild();
+        }
+
+
+
+        private java.util.List<BlockStart> blockStartsInOrder()
+        {
+            java.util.List<BlockStart> out = new java.util.ArrayList<>();
+
+            String activeHeaderKey = null;
+            boolean skippingDraggedBlock = false;
+
+            for (Component c : container.getComponents())
+            {
+                if (!(c instanceof JComponent))
+                {
+                    continue;
+                }
+
+                if (c == dropLine)
+                {
+                    continue;
+                }
+
+                JComponent jc = (JComponent) c;
+
+                PatchId pid = (PatchId) jc.getClientProperty(PROP_PATCH_ID);
+                String key = (String) jc.getClientProperty(PROP_LOCATION_KEY);
+
+                // Location header: starts a block.
+                if (pid == null && key != null)
+                {
+                    activeHeaderKey = key;
+                    skippingDraggedBlock = Objects.equals(draggingLocationKey, key);
+
+                    if (skippingDraggedBlock)
+                    {
+                        continue;
+                    }
+
+                    PatchId first = currentOrder.stream()
+                            .filter(id -> Objects.equals(key, id.getLocationKey()))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (first != null)
+                    {
+                        out.add(new BlockStart(jc, first, key));
+                    }
+
+                    continue;
+                }
+
+                if (pid == null)
+                {
+                    continue;
+                }
+
+                // If this row belongs to an active headered block, it is not a block start.
+                if (activeHeaderKey != null && Objects.equals(activeHeaderKey, key))
+                {
+                    continue;
+                }
+
+                // Block end: if we see a row that does not match the active header key, clear it.
+                activeHeaderKey = null;
+
+                // Standalone patch row is a block start.
+                out.add(new BlockStart(jc, pid, key));
+            }
+
+            return out;
+        }
+
+        private int resolveBlockDropStartIndex(java.util.List<BlockStart> starts, int mouseY)
+        {
+            if (starts.isEmpty())
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < starts.size(); i++)
+            {
+                Rectangle b = starts.get(i).component.getBounds();
+                int mid = b.y + (b.height / 2);
+                if (mouseY < mid)
+                {
+                    return i;
+                }
+            }
+
+            return -1; // end
+        }
+
+        private int resolveBlockDropComponentIndex(int mouseY)
+        {
+            java.util.List<BlockStart> starts = blockStartsInOrder();
+            int startIdx = resolveBlockDropStartIndex(starts, mouseY);
+
+            if (startIdx < 0)
+            {
+                return container.getComponentCount();
+            }
+
+            return container.getComponentZOrder(starts.get(startIdx).component);
+        }
+
         private void reset()
         {
             dragging = null;
             container = null;
             groupName = null;
             currentOrder = null;
+            dragMode = null;
+            draggingLocationKey = null;
+            draggingBlockIds = null;
             active = false;
         }
     }

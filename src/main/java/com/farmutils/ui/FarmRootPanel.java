@@ -4,6 +4,7 @@ import com.farmutils.FarmutilsConfig;
 import com.farmutils.config.NavColumns;
 import com.farmutils.config.NavContent;
 import com.farmutils.config.TextScale;
+import com.farmutils.storage.UiStateStore;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -92,6 +93,7 @@ public class FarmRootPanel extends PluginPanel
     }
 
     private final FarmutilsConfig config;
+    private final UiStateStore uiStateStore;
     private final FarmPanel farmPanel;
     private final ClientUI clientUI;
 
@@ -115,6 +117,7 @@ public class FarmRootPanel extends PluginPanel
     public FarmRootPanel(
             FarmutilsConfig config,
             ClientUI clientUI,
+            UiStateStore uiStateStore,
             FarmPanel farmPanel,
             JComponent routesPanel,
             JComponent calcPanel,
@@ -124,6 +127,7 @@ public class FarmRootPanel extends PluginPanel
 
         this.config = config;
         this.clientUI = clientUI;
+        this.uiStateStore = uiStateStore;
         this.farmPanel = farmPanel;
 
         // Painted “floor” so no white bleed-through anywhere
@@ -426,9 +430,22 @@ public class FarmRootPanel extends PluginPanel
         styleButton.accept(helpBtn);
 
         // --- Suggested toggles (JToggleButton) ---
-        JToggleButton reorderTgl = new JToggleButton("R"); // existing scope placeholder
-        reorderTgl.setToolTipText(tooltip.apply("Row reordering", "Enable drag reordering"));
+        JToggleButton reorderTgl = new JToggleButton("R");
+        reorderTgl.setToolTipText(tooltip.apply("Reorder", "Enable drag reordering"));
         styleButton.accept(reorderTgl);
+
+        // Single source of truth is UiStateStore.
+        reorderTgl.setSelected(uiStateStore != null && uiStateStore.isReorderModeEnabled());
+
+        reorderTgl.addActionListener(e ->
+        {
+            if (uiStateStore != null)
+            {
+                uiStateStore.setReorderModeEnabled(reorderTgl.isSelected());
+            }
+            // Drag bindings are rebuilt with the list.
+            farmPanel.rebuild();
+        });
 
         JToggleButton showDisabledTgl = new JToggleButton("D"); // existing scope placeholder
         showDisabledTgl.setToolTipText(tooltip.apply("Show disabled", "Toggle disabled patches visibility"));

@@ -3,6 +3,7 @@ package com.farmutils;
 import com.farmutils.ui.FarmPanel;
 import com.farmutils.ui.FarmRootPanel;
 import com.farmutils.ui.FarmStubPanel;
+import com.farmutils.storage.UiStateStore;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -38,6 +39,9 @@ public class FarmutilsPlugin extends Plugin
 	@Inject
 	private FarmPanel farmPanel;
 
+	@Inject
+	private UiStateStore uiStateStore;
+
 	private FarmRootPanel rootPanel;
 
 	private NavigationButton navButton;
@@ -51,6 +55,7 @@ public class FarmutilsPlugin extends Plugin
 		rootPanel = new FarmRootPanel(
 				config,
 				clientUI,
+				uiStateStore,
 				farmPanel,
 				new FarmStubPanel("Routes", "Route planning will be added later."),
 				new FarmStubPanel("Calc", "Profit and XP calculations will be added later."),

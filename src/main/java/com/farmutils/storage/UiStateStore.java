@@ -27,6 +27,9 @@ public class UiStateStore
     private final Set<PatchId> disabledPatches = new HashSet<>();
 private ListViewMode viewMode = ListViewMode.ALL;
 
+    // Runtime-only (not persisted yet): gates group + row drag reordering.
+    private boolean reorderModeEnabled = false;
+
         public enum ListViewMode
 {
         ALL,
@@ -83,5 +86,15 @@ private ListViewMode viewMode = ListViewMode.ALL;
         {
                     disabledPatches.remove(id);
         }
+    }
+
+    public boolean isReorderModeEnabled()
+    {
+        return reorderModeEnabled;
+    }
+
+    public void setReorderModeEnabled(boolean enabled)
+    {
+        this.reorderModeEnabled = enabled;
     }
 }
