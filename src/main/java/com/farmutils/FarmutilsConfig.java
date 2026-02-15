@@ -4,6 +4,8 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import com.farmutils.config.NavContent;
+import com.farmutils.config.NavColumns;
 
 
 @ConfigGroup("farmutils")
@@ -27,6 +29,28 @@ public interface FarmutilsConfig extends Config
     String appearanceSection = "appearance";
 
     @ConfigItem(
+            keyName = "navContent",
+            name = "Navigation content",
+            description = "Choose how navigation buttons are rendered.",
+            position = 50
+    )
+    default NavContent navContent()
+    {
+        return NavContent.TEXT_ONLY;
+    }
+
+    @ConfigItem(
+            keyName = "navColumns",
+            name = "Navigation columns",
+            description = "How many items per row in the navigation.",
+            position = 51
+    )
+    default NavColumns navColumns()
+    {
+        return NavColumns.FOUR_PER_ROW;
+    }
+
+@ConfigItem(
             keyName = "textScale",
             name = "Text scale",
             description = "Scales text in the Farm Utils panel",

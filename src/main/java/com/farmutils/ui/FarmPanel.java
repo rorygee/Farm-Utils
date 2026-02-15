@@ -43,6 +43,8 @@ import java.awt.PointerInfo;
 import javax.swing.Timer;
 import javax.swing.JViewport;
 
+import java.util.Locale;
+
 
 public class FarmPanel extends JPanel
 {
@@ -68,6 +70,8 @@ public class FarmPanel extends JPanel
 
     private final JPanel list = new JPanel();
     private String filterText = "";
+
+    private FilterCaseMode filterCaseMode = FilterCaseMode.INSENSITIVE;
 
     private List<String> lastCanonicalGroupOrder = Collections.emptyList();
 
@@ -105,6 +109,9 @@ public class FarmPanel extends JPanel
         container.setOpaque(false);
         container.setAlignmentX(Component.LEFT_ALIGNMENT);
         container.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        // Keep a stable top inset for the first group header regardless of whether
+        // the scroll bar gutter is currently visible.
+        container.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
@@ -170,7 +177,18 @@ public class FarmPanel extends JPanel
 
     public void setFilterText(String text)
     {
+        setFilterQuery(text, FilterCaseMode.INSENSITIVE);
+    }
+
+    /**
+     * Filter query contract:
+     * - default: case-insensitive
+     * - override: case-sensitive (future UI/query language)
+     */
+    public void setFilterQuery(String text, FilterCaseMode caseMode)
+    {
         this.filterText = (text == null) ? "" : text.trim();
+        this.filterCaseMode = (caseMode == null) ? FilterCaseMode.INSENSITIVE : caseMode;
         rebuild();
     }
 
@@ -292,8 +310,11 @@ public class FarmPanel extends JPanel
                     {
                         String locationKey = id.getLocationKey();
                         boolean isMultiSlot = locationKey != null && locationCounts.getOrDefault(locationKey, 0L) >= 2;
+                        boolean forceLocationHeader = locationKey != null && (
+                                "Activity".equals(groupName) || id == PatchId.QUEST_UNFERTHS_PATCH
+                        );
 
-                        if (isMultiSlot && seenLocations.add(locationKey))
+                        if ((isMultiSlot || forceLocationHeader) && seenLocations.add(locationKey))
                         {
                             String locationName = id.getLocationName() != null ? id.getLocationName() : id.getLabel();
                             bodyItems.add(fullWidth(new LocationHeaderRow(locationName, config)));
@@ -340,10 +361,43 @@ public class FarmPanel extends JPanel
             return true;
         }
 
-        String q = filterText.toLowerCase();
-        return groupName.toLowerCase().contains(q)
-                || id.getLabel().toLowerCase().contains(q)
-                || id.name().toLowerCase().contains(q);
+        String q = normalize(filterText, filterCaseMode);
+
+        // Candidate strings must track what the renderer uses, plus PatchId.name().
+        String patchTypeLabel = groupName;
+        String locationDisplay = (id.getLocationName() != null) ? id.getLocationName() : id.getLabel();
+        String slotDisplay = (id.getSlotLabel() != null) ? id.getSlotLabel() : id.getQualifierDetail();
+
+        if (contains(patchTypeLabel, q)) return true;
+        if (contains(locationDisplay, q)) return true;
+        if (contains(slotDisplay, q)) return true;
+        return contains(id.name(), q);
+    }
+
+    private boolean contains(String candidate, String normalizedQuery)
+    {
+        if (candidate == null || candidate.isEmpty())
+        {
+            return false;
+        }
+
+        String c = normalize(candidate, filterCaseMode);
+        return c.contains(normalizedQuery);
+    }
+
+    private static String normalize(String s, FilterCaseMode caseMode)
+    {
+        if (s == null)
+        {
+            return "";
+        }
+
+        if (caseMode == FilterCaseMode.SENSITIVE)
+        {
+            return s;
+        }
+
+        return s.toLowerCase(Locale.ROOT);
     }
 
     private JLabel createGroupDragHandle()

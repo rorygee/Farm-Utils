@@ -7,4 +7,9 @@ build
 nbactions.xml
 nb-configuration.xml
 nbproject/
+
+# Local AI context, prompts, experiments
 ai/
+
+# Reference docs for personal / agent handoff
+docs/

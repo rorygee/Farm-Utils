@@ -1,6 +1,8 @@
 package com.farmutils.ui;
 
 import com.farmutils.FarmutilsConfig;
+import com.farmutils.config.NavColumns;
+import com.farmutils.config.NavContent;
 import com.farmutils.config.TextScale;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.ColorScheme;
@@ -8,11 +10,13 @@ import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
 import javax.swing.*;
+import javax.swing.text.DefaultEditorKit;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.AWTEventListener;
+import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelListener;
@@ -23,14 +27,29 @@ public class FarmRootPanel extends PluginPanel
 {
     public enum Mode
     {
-        PATCHES("Patches"),
-        ROUTES("Routes"),
-        CALC("Calc"),
-        EXPORT("Export");
+        PATCHES("Patches", "patches"),
+        ROUTES("Routes", "routes"),
+        CALC("Calc", "calc"),
+        EXPORT("Export", "export");
 
         private final String label;
-        Mode(String label) { this.label = label; }
-        public String label() { return label; }
+        private final String iconKey;
+
+        Mode(String label, String iconKey)
+        {
+            this.label = label;
+            this.iconKey = iconKey;
+        }
+
+        public String label()
+        {
+            return label;
+        }
+
+        public String iconKey()
+        {
+            return iconKey;
+        }
     }
 
     private static final String FILTER_PLACEHOLDER = "Filter patches…";
@@ -149,7 +168,9 @@ public class FarmRootPanel extends PluginPanel
     private void buildFilterRow()
     {
         filterRow.setOpaque(true);
-        filterRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        // Give the filter row the same side padding feel as the nav without nesting.
+        filterRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        filterRow.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
 
         filterField.setOpaque(false);
         filterField.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
@@ -215,6 +236,30 @@ public class FarmRootPanel extends PluginPanel
             @Override public void changedUpdate(DocumentEvent e) { changed(); }
         });
 
+        // Backspace on an empty filter should unfocus (return focus to game) without
+        // interfering with normal text editing.
+        ActionMap am = filterField.getActionMap();
+        Action original = am.get(DefaultEditorKit.deletePrevCharAction);
+        if (original != null)
+        {
+            am.put(DefaultEditorKit.deletePrevCharAction, new AbstractAction()
+            {
+                @Override
+                public void actionPerformed(ActionEvent e)
+                {
+                    String t = filterField.getText();
+                    boolean effectivelyEmpty = (t == null) || t.isEmpty() || FILTER_PLACEHOLDER.equals(t);
+                    if (effectivelyEmpty)
+                    {
+                        clientUI.forceFocus();
+                        return;
+                    }
+
+                    original.actionPerformed(e);
+                }
+            });
+        }
+
         // ESC: if empty -> return focus to game; else -> clear filter
         KeyStroke esc = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
         filterField.getInputMap(JComponent.WHEN_FOCUSED).put(esc, "farmutils.esc");
@@ -243,13 +288,182 @@ public class FarmRootPanel extends PluginPanel
 
     private void buildToolbarRow()
     {
-        applyToolbarBackground();
-        toolbarRow.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+        // Toolbar is part of the sticky chrome (non-scrolling).
+        // Keep it permanently opaque with a consistent dark backdrop.
+        toolbarRow.setOpaque(true);
+        toolbarRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        toolbarRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
 
-        // Inert placeholder — reserved space only.
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new LayoutManager()
+        {
+            @Override public void addLayoutComponent(String name, Component comp) {}
+            @Override public void removeLayoutComponent(Component comp) {}
+
+            @Override
+            public Dimension preferredLayoutSize(Container parent)
+            {
+                int count = parent.getComponentCount();
+                int w = parent.getWidth();
+                if (w <= 0)
+                {
+                    w = toolbarRow.getWidth();
+                }
+                if (w <= 0)
+                {
+                    Container trp = toolbarRow.getParent();
+                    if (trp != null)
+                    {
+                        w = trp.getWidth();
+                    }
+                }
+
+                if (count <= 0 || w <= 0)
+                {
+                    // Fallback while not yet laid out
+                    return new Dimension(1, 28);
+                }
+                int size = Math.max(18, w / count);
+                return new Dimension(w, size);
+            }
+
+            @Override
+            public Dimension minimumLayoutSize(Container parent)
+            {
+                return preferredLayoutSize(parent);
+            }
+
+            @Override
+            public void layoutContainer(Container parent)
+            {
+                int count = parent.getComponentCount();
+                if (count <= 0)
+                {
+                    return;
+                }
+
+                int w = parent.getWidth();
+                if (w <= 0)
+                {
+                    w = toolbarRow.getWidth();
+                }
+                if (w <= 0)
+                {
+                    Container trp = toolbarRow.getParent();
+                    if (trp != null)
+                    {
+                        w = trp.getWidth();
+                    }
+                }
+                int base = w / count;
+                int rem = w % count;
+
+                int size = Math.max(18, base); // keep usable if very narrow
+
+                // Make the toolbar row match the square height (so it “scales to box height”).
+                int targetH = size;
+                if (toolbarRow.getPreferredSize().height != targetH)
+                {
+                    toolbarRow.setPreferredSize(new Dimension(1, targetH));
+                    toolbarRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, targetH));
+
+                    // Ensure the sticky chrome re-lays out immediately; otherwise the height update
+                    // may not take effect until some later UI interaction triggers a revalidate.
+                    toolbarRow.revalidate();
+                    Container p = toolbarRow.getParent();
+                    if (p != null)
+                    {
+                        p.revalidate();
+                    }
+                    toolbarRow.repaint();
+                }
+
+
+                int x = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    int extra = (i < rem) ? 1 : 0; // distribute leftover pixels
+                    int bw = base + extra;
+
+                    Component c = parent.getComponent(i);
+                    c.setBounds(x, 0, bw, targetH);
+                    x += bw;
+                }
+            }
+        });
+
+        // Tooltip helper: for now name-only. Later can append description based on config.
+        java.util.function.BiFunction<String, String, String> tooltip =
+                (name, description) -> name; // TODO later: name + " — " + description (when enabled)
+
+        java.util.function.Consumer<AbstractButton> styleButton = (b) ->
+        {
+            b.setFocusable(false);
+            b.setMargin(new Insets(0, 0, 0, 0));
+        };
+
+
+        // --- Suggested non-toggle actions (JButton) ---
+        JButton viewBtn = new JButton("V"); // View mode (cycle / open menu later)
+        viewBtn.setToolTipText(tooltip.apply("View mode", "Change the list presentation"));
+        styleButton.accept(viewBtn);
+
+        JButton sortBtn = new JButton("S"); // Sort / ordering menu later (not DnD)
+        sortBtn.setToolTipText(tooltip.apply("Sort / order", "Change ordering mode"));
+        styleButton.accept(sortBtn);
+
+        JButton collapseAllBtn = new JButton("C"); // Collapse groups/locations (future)
+        collapseAllBtn.setToolTipText(tooltip.apply("Collapse / expand", "Collapse or expand sections"));
+        styleButton.accept(collapseAllBtn);
+
+        JButton refreshBtn = new JButton("↻"); // Manual refresh (future; maybe forces recalculation)
+        refreshBtn.setToolTipText(tooltip.apply("Refresh", "Re-read state / repaint"));
+        styleButton.accept(refreshBtn);
+
+        JButton helpBtn = new JButton("?"); // Help / legend popover later
+        helpBtn.setToolTipText(tooltip.apply("Help", "Explain icons and states"));
+        styleButton.accept(helpBtn);
+
+        // --- Suggested toggles (JToggleButton) ---
+        JToggleButton reorderTgl = new JToggleButton("R"); // existing scope placeholder
+        reorderTgl.setToolTipText(tooltip.apply("Row reordering", "Enable drag reordering"));
+        styleButton.accept(reorderTgl);
+
+        JToggleButton showDisabledTgl = new JToggleButton("D"); // existing scope placeholder
+        showDisabledTgl.setToolTipText(tooltip.apply("Show disabled", "Toggle disabled patches visibility"));
+        styleButton.accept(showDisabledTgl);
+
+        JToggleButton highlightsTgl = new JToggleButton("H"); // highlight visibility (future)
+        highlightsTgl.setToolTipText(tooltip.apply("Show highlights", "Toggle highlight indicators"));
+        styleButton.accept(highlightsTgl);
+
+        JToggleButton stateLinesTgl = new JToggleButton("L"); // state divider visibility (future)
+        stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Toggle state divider indicators"));
+        styleButton.accept(stateLinesTgl);
+
+        JToggleButton compactChromeTgl = new JToggleButton("⤓"); // “compact toolbar/chrome” idea (future)
+        compactChromeTgl.setToolTipText(tooltip.apply("Compact chrome", "Reduce padding / density"));
+        styleButton.accept(compactChromeTgl);
+
+        // --- Layout: left cluster, subtle spacing between “groups”, glue, right utilities ---
+        content.add(viewBtn);
+        content.add(sortBtn);
+        content.add(reorderTgl);
+        content.add(showDisabledTgl);
+        content.add(highlightsTgl);
+        content.add(stateLinesTgl);
+        content.add(collapseAllBtn);
+        content.add(refreshBtn);
+        content.add(compactChromeTgl);
+        content.add(helpBtn);
+
+        toolbarRow.add(content, BorderLayout.CENTER);
+
         toolbarRow.setPreferredSize(new Dimension(1, 28));
         toolbarRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
     }
+
 
     private void setPatchesChromeVisible(boolean visible)
     {
@@ -327,65 +541,160 @@ public class FarmRootPanel extends PluginPanel
     private void applyToolbarBackground()
     {
         boolean solid = config.toolbarSolidBackground();
-
+        toolbarRow.setOpaque(solid);
         if (solid)
         {
-            // Slightly lighter than the chrome background so it reads as a distinct band.
-        }
-        else
-        {
-            toolbarRow.setOpaque(false);
-            toolbarRow.setBackground(new Color(0, 0, 0, 0));
+            toolbarRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         }
     }
+
 
 
     private void buildNav()
     {
+        nav.removeAll();
+
+        // Ensure selection always refers to the current button instances.
+        buttons.clear();
+
         nav.setOpaque(true);
         nav.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         nav.setBorder(new EmptyBorder(6, 6, 6, 6));
+        nav.setLayout(new GridBagLayout());
+
+        NavContent content = config.navContent();
+
+        NavColumns columns = config.navColumns();
+
 
         ButtonGroup group = new ButtonGroup();
 
-        GridBagConstraints c = new GridBagConstraints();
-        c.gridy = 0;
-        c.fill = GridBagConstraints.HORIZONTAL;
-        c.weighty = 0;
+        Mode[] modes = { Mode.PATCHES, Mode.ROUTES, Mode.CALC, Mode.EXPORT };
 
-        addButton(group, c, Mode.PATCHES, 0);
-        addButton(group, c, Mode.ROUTES,  1);
-        addButton(group, c, Mode.CALC,    2);
-        addButton(group, c, Mode.EXPORT,  3);
+        GridBagConstraints base = new GridBagConstraints();
+        base.insets = new Insets(0, 0, 0, 0);
+        base.weighty = 0;
 
-        // Divider under tabs (always)
-        JSeparator sep = new JSeparator();
-        sep.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-        sep.setBackground(ColorScheme.MEDIUM_GRAY_COLOR);
+        // 2x2 should fill horizontally so labels have room.
+        base.fill = GridBagConstraints.HORIZONTAL;
+        base.weightx = 1;
 
+        for (int i = 0; i < modes.length; i++)
+        {
+            GridBagConstraints c = (GridBagConstraints) base.clone();
+            c.gridx = colFor(i, columns);
+            c.gridy = rowFor(i, columns);
+
+            addButton(group, c, content, modes[i]);
+        }
+
+        // Preserve selected mode across rebuilds (config changes, plugin reload, etc.).
+        JToggleButton selected = buttons.get(current);
+        if (selected != null)
+        {
+            selected.setSelected(true);
+        }
+
+        // Divider under nav
+        int rows = rowFor(3, columns) + 1;
+
+        JComponent sep = UiTokens.divider(ColorScheme.DARKER_GRAY_COLOR);
         GridBagConstraints sepC = new GridBagConstraints();
         sepC.gridx = 0;
-        sepC.gridy = 1;
-        sepC.gridwidth = 4;
+        sepC.gridy = rows;
+        sepC.gridwidth = gridWidthFor(columns);
         sepC.fill = GridBagConstraints.HORIZONTAL;
         sepC.weightx = 1;
-
         nav.add(sep, sepC);
+
+        nav.revalidate();
+        nav.repaint();
     }
 
-    private void addButton(ButtonGroup group, GridBagConstraints base, Mode mode, int x)
+    private static int columnsPerRow(NavColumns c)
     {
-        JToggleButton btn = new JToggleButton(mode.label());
-        btn.setFocusPainted(false);
-        btn.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        return c == NavColumns.TWO_PER_ROW ? 2 : 4;
+    }
 
-        // Token colors only
+    private static int rowFor(int i, NavColumns c)
+    {
+        int cols = columnsPerRow(c);
+        return i / cols;
+    }
+
+    private static int colFor(int i, NavColumns c)
+    {
+        int cols = columnsPerRow(c);
+        return i % cols;
+    }
+
+    private static int gridWidthFor(NavColumns c)
+    {
+        return columnsPerRow(c);
+    }
+
+
+    private void addButton(ButtonGroup group, GridBagConstraints c, NavContent content, Mode mode)
+    {
+        JToggleButton btn = new JToggleButton();
+        btn.setFocusPainted(false);
         btn.setOpaque(true);
         btn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         btn.setForeground(Color.WHITE);
 
-        // Scale-safe: derive only (no size)
-        applyNavFont(btn);
+        // Always available for icon-only modes.
+        btn.setToolTipText(mode.label());
+
+        NavColumns columns = config.navColumns();
+
+        switch (content)
+        {
+            case TEXT_ONLY:
+            {
+                btn.setText(mode.label());
+                btn.setIcon(null);
+                btn.setHorizontalAlignment(SwingConstants.CENTER);
+                btn.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+                applyNavFont(btn);
+                break;
+            }
+
+            case SMALL_ICONS:
+            {
+                btn.setIcon(loadNavIcon(mode, 16));
+
+                if (columns == NavColumns.TWO_PER_ROW)
+                {
+                    // 2-per-row: icon + label
+                    btn.setText(mode.label());
+                    btn.setIconTextGap(4);
+                    btn.setHorizontalAlignment(SwingConstants.LEFT);
+                    btn.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+                    applyNavFont(btn);
+                }
+                else
+                {
+                    // 4-per-row: icon only
+                    btn.setText("");
+                    btn.setHorizontalAlignment(SwingConstants.CENTER);
+                    btn.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+                }
+                break;
+            }
+
+            case LARGE_ICONS:
+            default:
+            {
+                int iconPx = (columns == NavColumns.TWO_PER_ROW) ? 64 : 28;
+                btn.setIcon(loadNavIcon(mode, iconPx));
+                btn.setText("");
+                btn.setHorizontalAlignment(SwingConstants.CENTER);
+
+                int pad = (columns == NavColumns.FOUR_PER_ROW) ? 4 : 6;
+                btn.setBorder(BorderFactory.createEmptyBorder(pad, pad, pad, pad));
+                break;
+            }
+        }
 
         btn.addActionListener(e ->
         {
@@ -397,13 +706,10 @@ public class FarmRootPanel extends PluginPanel
 
         group.add(btn);
         buttons.put(mode, btn);
-
-        GridBagConstraints c = (GridBagConstraints) base.clone();
-        c.gridx = x;
-        c.weightx = 1;
-
         nav.add(btn, c);
     }
+
+
 
     private void buildCards(FarmPanel farmPanel, JComponent routes, JComponent calc, JComponent export)
     {
@@ -444,17 +750,22 @@ public class FarmRootPanel extends PluginPanel
         repaint();
     }
 
-    public void refreshUiFromConfig()
+    public void rebuildNav()
     {
-        for (JToggleButton b : buttons.values())
-        {
-            applyNavFont(b);
-        }
-        applyFilterSizing();
-        applyToolbarBackground();
+        buildNav();
         nav.revalidate();
         nav.repaint();
     }
+
+    public void refreshUiFromConfig()
+    {
+        buildNav();              // <-- this is what you were missing
+        applyFilterSizing();
+        applyToolbarBackground();
+        revalidate();
+        repaint();
+    }
+
 
     public void resetToDefault()
     {
@@ -479,6 +790,12 @@ public class FarmRootPanel extends PluginPanel
         super.removeNotify();
     }
 
+    private javax.swing.Icon loadNavIcon(Mode mode, int px)
+    {
+        String path = "/nav/" + px + "/" + mode.iconKey() + ".png";
+        java.net.URL url = FarmRootPanel.class.getResource(path);
+        return url == null ? null : new javax.swing.ImageIcon(url);
+    }
 
     private MouseWheelListener globalScrollListener;
 
@@ -616,6 +933,7 @@ public class FarmRootPanel extends PluginPanel
         }
         putClientProperty("farmutils.filterBlurListener", null);
     }
+
 
     private static JComponent divider()
     {

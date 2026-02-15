@@ -294,8 +294,15 @@ public enum PatchId
     SPECIAL_MUSHROOM("Mushroom", "Canifis"),
     SPECIAL_BELLADONNA_DRAYNOR("Belladonna", "Draynor Manor"),
     SPECIAL_BELLADONNA_AUBURNVALE("Belladonna", "Auburnvale"),
-    SPECIAL_HESPORI("Activity", "Farming Guild", PatchQualifier.BOSS, "Hespori"),
-    SPECIAL_ANIMA("Activity", "Farming Guild", PatchQualifier.ACTIVITY, "Anima patch"),
+    // Activity entries for Farming Guild are grouped by location and distinguished by label.
+    SPECIAL_HESPORI(
+            "Activity", "Hespori", PatchQualifier.BOSS, "Hespori",
+            "farming_guild_activity", "Farming Guild", null
+    ),
+    SPECIAL_ANIMA(
+            "Activity", "Anima patch", PatchQualifier.ACTIVITY, "Anima patch",
+            "farming_guild_activity", "Farming Guild", null
+    ),
 
     // --- Special tree patches ---
     // --- Hardwood ---
@@ -331,7 +338,10 @@ public enum PatchId
     CACTUS_FARMING_GUILD("Cactus", "Farming Guild"),
 
     // --- Activity (minigame/raid/etc) ---
-    SPECIAL_TITHE_FARM("Activity", "Tithe Farm", PatchQualifier.MINIGAME, "Tithe Farm"),
+    SPECIAL_TITHE_FARM(
+            "Activity", "Tithe Farm", PatchQualifier.MINIGAME, "Tithe Farm",
+            "hosidius", "Hosidius", null
+    ),
     SPECIAL_COX_HERB(
             "Activity", "Herb patch", PatchQualifier.RAID, "Chambers of Xeric",
             "mount_quidamortem", "Mount Quidamortem", null

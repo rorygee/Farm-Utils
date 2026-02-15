@@ -87,23 +87,68 @@ public class FarmutilsPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onConfigChanged(ConfigChanged e)
+	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!"farmutils".equals(e.getGroup()))
+		if (!event.getGroup().equals("farmutils"))
 		{
 			return;
 		}
 
-		if (farmPanel != null)
+		final String key = event.getKey();
+		if (key == null)
 		{
-			farmPanel.refreshUiFromConfig();
+			return;
 		}
 
-		if (rootPanel != null)
+		switch (key)
 		{
-			rootPanel.refreshUiFromConfig();
+			// Navigation chrome
+			case "navContent":
+			case "navColumns":
+				if (rootPanel != null)
+				{
+					// Only rebuild the nav grid; avoid touching unrelated chrome.
+					rootPanel.rebuildNav();
+				}
+				break;
+
+			// Text scale affects nav/filter chrome + patch list
+			case "textScale":
+				if (rootPanel != null)
+				{
+					rootPanel.refreshUiFromConfig();
+				}
+				if (farmPanel != null)
+				{
+					farmPanel.refreshUiFromConfig();
+				}
+				break;
+
+			// Patch list appearance / scrollbar options
+			case "emphasizeHeaders":
+			case "showPatchCategoryPrefix":
+			case "scrollbarVisibility":
+			case "scrollbarWidth":
+			case "scrollbarOutlineStyle":
+			case "scrollbarColor":
+			case "showScrollButtons":
+			case "scrollbarWellBackground":
+				if (farmPanel != null)
+				{
+					farmPanel.refreshUiFromConfig();
+				}
+				break;
+
+			// Toolbar chrome background option
+			case "toolbarSolidBackground":
+				if (rootPanel != null)
+				{
+					rootPanel.refreshUiFromConfig();
+				}
+				break;
 		}
 	}
+
 
 
 	@Provides
