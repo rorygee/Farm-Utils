@@ -102,6 +102,13 @@ public class FarmutilsPlugin extends Plugin
 
 		switch (key)
 		{
+			// Content filtering
+			case "hideQuestPatches":
+			if (farmPanel != null)
+				{
+					farmPanel.refreshUiFromConfig();
+			}
+			break;
 			// Navigation chrome
 			case "navContent":
 			case "navColumns":

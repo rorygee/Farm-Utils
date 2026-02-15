@@ -2,6 +2,7 @@ package com.farmutils.ui;
 
 import com.farmutils.FarmutilsConfig;
 import com.farmutils.model.PatchId;
+import com.farmutils.model.PatchQualifier;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
 import net.runelite.client.ui.ClientUI;
@@ -201,7 +202,8 @@ public class FarmPanel extends JPanel
             boolean hasFilter = filterText != null && !filterText.isEmpty();
 
             Map<String, List<PatchId>> grouped = Arrays.stream(PatchId.values())
-                    .sorted(
+                .filter(id -> !(config.hideQuestPatches() && id.getQualifier() == PatchQualifier.QUEST))
+                .sorted(
                             Comparator.comparing(PatchId::getGroup)
                                     .thenComparing(id -> {
                                         // Stable primary ordering for multi-slot locations

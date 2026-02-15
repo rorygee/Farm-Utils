@@ -11,6 +11,15 @@ import com.farmutils.config.NavColumns;
 @ConfigGroup("farmutils")
 public interface FarmutilsConfig extends Config
 {
+
+
+    @ConfigSection(
+            name = "Content",
+            description = "What appears in the patch list",
+            position = 80
+    )
+    String contentSection = "content";
+
     @ConfigItem(
             keyName = "staleDays",
             name = "Stale after (days)",
@@ -19,6 +28,18 @@ public interface FarmutilsConfig extends Config
     default int staleDays()
     {
         return 7;
+    }
+
+    @ConfigItem(
+        keyName = "hideQuestPatches",
+        name = "Hide quest patches",
+        description = "Hide patches that are only relevant during quests.",
+        position = 1,
+        section = contentSection
+)
+        default boolean hideQuestPatches()
+{
+    return false;
     }
 
     @ConfigSection(
