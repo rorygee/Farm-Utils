@@ -73,6 +73,20 @@ public class FarmPanel extends JPanel
 
     private List<String> lastCanonicalGroupOrder = Collections.emptyList();
 
+    // Updated each rebuild: groups that currently render a collapsible header (after filters/view mode).
+    private final java.util.List<String> visibleCollapsibleGroups = new java.util.ArrayList<>();
+
+    /**
+     * Optional callback invoked on the EDT after a rebuild finishes.
+     * Used by the toolbar to refresh enabled/disabled states based on what is currently visible.
+     */
+    private Runnable onAfterRebuild;
+
+    public void setOnAfterRebuild(Runnable onAfterRebuild)
+    {
+        this.onAfterRebuild = onAfterRebuild;
+    }
+
 
     private static final String PROP_GROUP_DRAG_HANDLE = "farmutils.groupDragHandle";
     private static final String PROP_PATCH_DRAG_HANDLE = "farmutils.patchDragHandle";
@@ -217,11 +231,27 @@ public class FarmPanel extends JPanel
         rebuild();
     }
 
+
+    /**
+     * Groups that currently render a collapsible header (after filters + current view mode).
+     * Used by toolbar "Collapse/Expand all" to operate only on visible sections.
+     */
+    public java.util.List<String> getVisibleCollapsibleGroups()
+    {
+        return new java.util.ArrayList<>(visibleCollapsibleGroups);
+    }
+
+    public boolean hasCollapsibleHeaders()
+    {
+        return !visibleCollapsibleGroups.isEmpty();
+    }
+
     public void rebuild()
     {
         SwingUtilities.invokeLater(() ->
         {
             list.removeAll();
+            visibleCollapsibleGroups.clear();
 
             boolean hasFilter = filterText != null && !filterText.isEmpty();
 
@@ -271,12 +301,117 @@ public class FarmPanel extends JPanel
             List<Map.Entry<String, List<PatchId>>> orderedGroups =
                     PatchOrderingResolver.resolveGroupOrder(grouped, uiStateStore);
 
+            boolean showIndicator = uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.CLEAN;
+            boolean showLocationHeaders = uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.PATCH_LABEL;
+
+            // ViewMode: DEFAULT is grouped (current behavior). FLAT is a single list without group headers.
+            if (uiStateStore.getPatchListViewMode() == UiStateStore.ViewMode.FLAT)
+            {
+                java.util.List<PatchId> flatVisible = new java.util.ArrayList<>();
+                for (Map.Entry<String, List<PatchId>> entry : orderedGroups)
+                {
+                    String groupName = entry.getKey();
+                    List<PatchId> orderedIds =
+                            PatchOrderingResolver.resolveEntryOrder(groupName, entry.getValue(), uiStateStore);
+
+                    orderedIds = applySort(orderedIds);
+
+                    for (PatchId id : orderedIds)
+                    {
+                        if (matchesFilter(id, groupName))
+                        {
+                            flatVisible.add(id);
+                        }
+                    }
+                }
+
+                if (!flatVisible.isEmpty())
+                {
+                    JPanel entriesPanel = new JPanel();
+                    entriesPanel.setLayout(new BoxLayout(entriesPanel, BoxLayout.Y_AXIS));
+                    entriesPanel.setOpaque(false);
+                    entriesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    entriesPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+                    // Render-only location headers: shown only when 2+ entries share the same locationKey.
+                    Map<String, Long> locationCounts = flatVisible.stream()
+                            .map(PatchId::getLocationKey)
+                            .filter(k -> k != null)
+                            .collect(Collectors.groupingBy(k -> k, Collectors.counting()));
+
+                    java.util.Set<String> seenLocations = new java.util.HashSet<>();
+                    java.util.List<JComponent> bodyItems = new java.util.ArrayList<>();
+
+                    for (PatchId id : flatVisible)
+                    {
+                        String groupName = id.getGroup();
+                        String locationKey = id.getLocationKey();
+                        boolean isMultiSlot = showLocationHeaders && locationKey != null && locationCounts.getOrDefault(locationKey, 0L) >= 2;
+                        boolean forceLocationHeader = showLocationHeaders && locationKey != null && (
+                                "Activity".equals(groupName) || id == PatchId.QUEST_UNFERTHS_PATCH
+                        );
+
+                        if ((isMultiSlot || forceLocationHeader) && seenLocations.add(locationKey))
+                        {
+                            String locationName = id.getLocationName() != null ? id.getLocationName() : id.getLabel();
+                            LocationHeaderRow locHeader = new LocationHeaderRow(locationName, config);
+                            locHeader.setReorderHandleVisible(false); // flat view does not support location-block ordering yet
+                            JComponent headerWrap = fullWidth(locHeader);
+                            headerWrap.putClientProperty(PROP_GROUP_NAME, groupName);
+                            headerWrap.putClientProperty(PROP_LOCATION_KEY, locationKey);
+                            bodyItems.add(headerWrap);
+                        }
+
+                        PatchRow row = new PatchRow(
+                                id,
+                                store,
+                                config,
+                                showIndicator,
+                                titleSuffixForCleanPatchLabel(id),
+                                secondaryOverrideForSort(id),
+                                this::rebuild);
+                        // No patch reordering in FLAT view.
+                        row.setReorderHandleVisible(false);
+
+                        JComponent rowWrap = fullWidth(row);
+                        rowWrap.putClientProperty(PROP_GROUP_NAME, groupName);
+                        rowWrap.putClientProperty(PROP_PATCH_ID, id);
+                        rowWrap.putClientProperty(PROP_LOCATION_KEY, locationKey);
+
+                        if (isMultiSlot)
+                        {
+                            int indent = Math.max(8, Math.round(10 * config.textScale().multiplier()));
+                            rowWrap.setBorder(BorderFactory.createEmptyBorder(0, indent, 0, 0));
+                        }
+
+                        bodyItems.add(rowWrap);
+                    }
+
+                    for (int i = 0; i < bodyItems.size(); i++)
+                    {
+                        entriesPanel.add(bodyItems.get(i));
+                        if (i < bodyItems.size() - 1)
+                        {
+                            entriesPanel.add(divider());
+                        }
+                    }
+
+                    list.add(entriesPanel);
+                }
+
+                list.revalidate();
+                list.repaint();
+                return;
+            }
+
             for (Map.Entry<String, List<PatchId>> entry : orderedGroups)
             {
                 String groupName = entry.getKey();
 
                 List<PatchId> orderedIds =
                         PatchOrderingResolver.resolveEntryOrder(groupName, entry.getValue(), uiStateStore);
+
+                orderedIds = applySort(orderedIds);
 
                 List<PatchId> visibleIds = orderedIds.stream()
                         .filter(id -> matchesFilter(id, groupName))
@@ -321,6 +456,7 @@ public class FarmPanel extends JPanel
                         : AggregateState.UNKNOWN;
 
                 boolean reorderEnabled = uiStateStore.isReorderModeEnabled();
+                visibleCollapsibleGroups.add(groupName);
                 JComponent header = fullWidth(createGroupHeader(groupName, collapsedForHeader, aggregate, reorderEnabled));
                 groupBlock.add(header);
 
@@ -358,8 +494,8 @@ public class FarmPanel extends JPanel
                     for (PatchId id : visibleIds)
                     {
                         String locationKey = id.getLocationKey();
-                        boolean isMultiSlot = locationKey != null && locationCounts.getOrDefault(locationKey, 0L) >= 2;
-                        boolean forceLocationHeader = locationKey != null && (
+                        boolean isMultiSlot = showLocationHeaders && locationKey != null && locationCounts.getOrDefault(locationKey, 0L) >= 2;
+                        boolean forceLocationHeader = showLocationHeaders && locationKey != null && (
                                 "Activity".equals(groupName) || id == PatchId.QUEST_UNFERTHS_PATCH
                         );
 
@@ -385,7 +521,14 @@ public class FarmPanel extends JPanel
                             bodyItems.add(headerWrap);
                         }
 
-                        PatchRow row = new PatchRow(id, store, config, this::rebuild);
+                        PatchRow row = new PatchRow(
+                                id,
+                                store,
+                                config,
+                                showIndicator,
+                                titleSuffixForCleanPatchLabel(id),
+                                secondaryOverrideForSort(id),
+                                this::rebuild);
                         boolean headerOwnsThisRow = (isMultiSlot || forceLocationHeader);
                         row.setReorderHandleVisible(reorderEnabled && !headerOwnsThisRow);
 
@@ -440,6 +583,11 @@ public class FarmPanel extends JPanel
 
             list.revalidate();
             list.repaint();
+
+            if (onAfterRebuild != null)
+            {
+                onAfterRebuild.run();
+            }
         });
     }
 
@@ -884,6 +1032,159 @@ public class FarmPanel extends JPanel
             return false;
         }
     }
+
+    private List<PatchId> applySort(List<PatchId> ids)
+{
+    if (ids == null || ids.size() <= 1)
+    {
+        return ids;
+    }
+
+    UiStateStore.SortMode mode = uiStateStore.getPatchListSortMode();
+
+    if (mode == UiStateStore.SortMode.DEFAULT)
+    {
+        return ids;
+    }
+
+    List<PatchId> copy = new ArrayList<>(ids);
+
+    if (mode == UiStateStore.SortMode.ALPHABETICAL)
+    {
+        // Location-block alphabetical (Option A): preserves location header semantics.
+        copy.sort(Comparator
+                .comparing((PatchId p) -> safeLower(p.getLocationKey()))
+                .thenComparing(p -> safeLower(p.getLocationName()))
+                .thenComparing(p -> naturalPlotKey(p.getLabel()))
+                .thenComparing(Enum::name));
+        return copy;
+    }
+
+    if (mode == UiStateStore.SortMode.PATCH_LABEL)
+    {
+        // Pure patch-label alphabetical. (Location headers are suppressed while this is active.)
+        copy.sort(Comparator
+                .comparing((PatchId p) -> naturalPlotKey(p.getLabel()))
+                .thenComparing(p -> safeLower(p.getLocationKey()))
+                .thenComparing(p -> safeLower(p.getLocationName()))
+                .thenComparing(Enum::name));
+        return copy;
+    }
+
+    return ids;
+}
+
+    /**
+     * When ViewMode=CLEAN and SortMode=PATCH_LABEL, the secondary line is hidden
+     * but patch labels are often ambiguous ("Plot 1", "Herb patch").
+     * In that one combination only, append a compact location suffix to the title.
+     */
+    private String titleSuffixForCleanPatchLabel(PatchId id)
+    {
+        if (id == null)
+        {
+            return null;
+        }
+
+        if (uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.CLEAN)
+        {
+            return null;
+        }
+
+        if (uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.PATCH_LABEL)
+        {
+            return null;
+        }
+
+        // Exception rule:
+        // In CLEAN + PATCH_LABEL, we append location to disambiguate ambiguous labels.
+        // However, Herb/Flower patches become noisy with a suffix (they are commonly scanned via
+        // their location blocks). Exclude them, except for quest patches (e.g., enriched snapdragon)
+        // where location context is still valuable.
+        String group = id.getGroup();
+        if (!isQuestPatch(id) && group != null && ("Herb".equalsIgnoreCase(group) || "Flower".equalsIgnoreCase(group)))
+        {
+            return null;
+        }
+
+        String loc = id.getLocationName();
+        if (loc == null || loc.isBlank())
+        {
+            loc = id.getLocationKey();
+        }
+
+        if (loc == null || loc.isBlank())
+        {
+            return null;
+        }
+
+        return " · " + loc;
+    }
+
+    private boolean isQuestPatch(PatchId id)
+    {
+        // Best-effort heuristic without expanding the data model.
+        String n = id.name();
+        return n.startsWith("QUEST_") || n.contains("_QUEST_");
+    }
+
+    /**
+     * When sorting by PATCH_LABEL, the primary row label becomes ambiguous (e.g. many "Plot 1").
+     * We reuse the existing secondary line to show location context instead of patch state.
+     */
+    private String secondaryOverrideForSort(PatchId id)
+    {
+        if (uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.PATCH_LABEL)
+        {
+            return null;
+        }
+
+        if (id == null)
+        {
+            return null;
+        }
+
+        String loc = id.getLocationName();
+        if (loc != null && !loc.isBlank())
+        {
+            return loc;
+        }
+
+        String key = id.getLocationKey();
+        if (key != null && !key.isBlank())
+        {
+            return key;
+        }
+
+        return id.getGroup();
+    }
+
+private static String safeLower(String s)
+    {
+        return (s == null) ? "" : s.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Hotfix: numeric plot ordering for string sorts (e.g. "Plot 10" should come after "Plot 2").
+     * Applies to all sort modes that compare labels.
+     */
+    private static String naturalPlotKey(String s)
+    {
+        if (s == null)
+        {
+            return "";
+        }
+
+        String lower = s.toLowerCase(Locale.ROOT);
+        Integer n = tryParsePlotNumber(lower);
+        if (n != null)
+        {
+            return String.format("plot:%03d", n);
+        }
+
+        return lower;
+    }
+
     private final class GroupDragController extends MouseAdapter
     {
         private static final int DRAG_THRESHOLD_PX = 6;

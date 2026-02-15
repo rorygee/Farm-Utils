@@ -105,6 +105,8 @@ public class FarmRootPanel extends PluginPanel
     private final JComponent chromeDivider = divider();
 
     private final JTextField filterField = new JTextField();
+    // Updated in buildToolbar(); invoked after FarmPanel rebuild completes.
+    private Runnable refreshCollapseAll = () -> {};
     private final JButton restoreToolbarButton = new JButton("▾");
     private JToggleButton hideToolbarToggle;
 
@@ -236,6 +238,7 @@ public class FarmRootPanel extends PluginPanel
                     farmPanel.setFilterText(trimmed);
                 }
             }
+            // Toolbar refresh is invoked after rebuild completes.
 
             @Override public void insertUpdate(DocumentEvent e) { changed(); }
             @Override public void removeUpdate(DocumentEvent e) { changed(); }
@@ -460,13 +463,197 @@ public class FarmRootPanel extends PluginPanel
         // Single source of truth is UiStateStore.
         reorderTgl.setSelected(uiStateStore != null && uiStateStore.isReorderModeEnabled());
 
+        // Contract: Reorder is only available when SortMode == DEFAULT and ViewMode != FLAT.
+        if (uiStateStore != null && (uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.DEFAULT
+                || uiStateStore.getPatchListViewMode() == UiStateStore.ViewMode.FLAT))
+        {
+            reorderTgl.setEnabled(false);
+            reorderTgl.setSelected(false);
+        }
+
+
+        // Collapse/Expand all is only meaningful when the current view renders collapsible headers.
+        // Rules:
+        // - If mixed open/closed states: default action is "Collapse all".
+        // - Disabled while reordering is ON.
+        Runnable refreshCollapseAll = () ->
+        {
+            if (uiStateStore == null)
+            {
+                collapseAllBtn.setEnabled(false);
+                return;
+            }
+
+            java.util.List<String> groups = farmPanel.getVisibleCollapsibleGroups();
+            boolean hasCollapsible = !groups.isEmpty();
+            boolean enabled = hasCollapsible && !uiStateStore.isReorderModeEnabled();
+
+            collapseAllBtn.setEnabled(enabled);
+
+            if (!hasCollapsible)
+            {
+                collapseAllBtn.setToolTipText(tooltip.apply("Collapse / expand", "No collapsible sections in this view"));
+                return;
+            }
+
+            if (uiStateStore.isReorderModeEnabled())
+            {
+                collapseAllBtn.setToolTipText(tooltip.apply("Collapse / expand", "Disabled while reordering"));
+                return;
+            }
+
+            boolean anyCollapsed = false;
+            boolean anyExpanded = false;
+
+            for (String g : groups)
+            {
+                if (uiStateStore.isGroupCollapsed(g))
+                {
+                    anyCollapsed = true;
+                }
+                else
+                {
+                    anyExpanded = true;
+                }
+            }
+
+            // Mixed or all expanded -> collapse all. All collapsed -> expand all.
+            boolean willCollapse = anyExpanded;
+
+            collapseAllBtn.setToolTipText(tooltip.apply(
+                    willCollapse ? "Collapse all" : "Expand all",
+                    willCollapse ? "Collapse all visible sections" : "Expand all visible sections"));
+        };
+
+        this.refreshCollapseAll = refreshCollapseAll;
+        farmPanel.setOnAfterRebuild(refreshCollapseAll);
+
+
+        collapseAllBtn.addActionListener(e ->
+        {
+            if (uiStateStore == null)
+            {
+                return;
+            }
+
+            java.util.List<String> groups = farmPanel.getVisibleCollapsibleGroups();
+            if (groups.isEmpty())
+            {
+                return;
+            }
+
+            boolean anyExpanded = false;
+            for (String g : groups)
+            {
+                if (!uiStateStore.isGroupCollapsed(g))
+                {
+                    anyExpanded = true;
+                    break;
+                }
+            }
+
+            // If anything is expanded, collapse all; otherwise expand all.
+            boolean targetCollapsed = anyExpanded;
+
+            for (String g : groups)
+            {
+                uiStateStore.setGroupCollapsed(g, targetCollapsed);
+            }
+
+            farmPanel.rebuild();
+        });
+
+        // Initial state; subsequent updates are driven by FarmPanel rebuilds.
+        refreshCollapseAll.run();
+
         reorderTgl.addActionListener(e ->
         {
             if (uiStateStore != null)
             {
+                // Contract: FLAT view does not support patch reordering.
+                if (uiStateStore.getPatchListViewMode() == UiStateStore.ViewMode.FLAT)
+                {
+                    uiStateStore.setReorderModeEnabled(false);
+                    reorderTgl.setSelected(false);
+                    farmPanel.rebuild();
+                    return;
+                }
+
                 uiStateStore.setReorderModeEnabled(reorderTgl.isSelected());
             }
             // Drag bindings are rebuilt with the list.
+            farmPanel.rebuild();
+        });
+
+        // Now that reorderTgl exists, wire view cycling so we can keep toggle state in sync.
+        viewBtn.addActionListener(e ->
+        {
+            if (uiStateStore == null)
+            {
+                return;
+            }
+
+            UiStateStore.ViewMode cur = uiStateStore.getPatchListViewMode();
+            UiStateStore.ViewMode next;
+
+            switch (cur)
+            {
+                case DEFAULT:
+                    next = UiStateStore.ViewMode.FLAT;
+                    break;
+                case FLAT:
+                    next = UiStateStore.ViewMode.CLEAN;
+                    break;
+                default:
+                    next = UiStateStore.ViewMode.DEFAULT;
+                    break;
+            }
+
+            uiStateStore.setPatchListViewMode(next);
+
+            // Enforce gating in the UI immediately.
+            boolean canReorder = uiStateStore.getPatchListSortMode() == UiStateStore.SortMode.DEFAULT
+                    && uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.FLAT;
+            reorderTgl.setEnabled(canReorder);
+            reorderTgl.setSelected(uiStateStore.isReorderModeEnabled());
+
+            farmPanel.rebuild();
+        });
+
+        sortBtn.addActionListener(e ->
+        {
+            if (uiStateStore == null)
+            {
+                return;
+            }
+
+            UiStateStore.SortMode cur = uiStateStore.getPatchListSortMode();
+            UiStateStore.SortMode next;
+
+            switch (cur)
+            {
+                case DEFAULT:
+                    next = UiStateStore.SortMode.ALPHABETICAL;
+                    break;
+                case ALPHABETICAL:
+                    next = UiStateStore.SortMode.PATCH_LABEL;
+                    break;
+                default:
+                    next = UiStateStore.SortMode.DEFAULT;
+                    break;
+            }
+
+            uiStateStore.setPatchListSortMode(next);
+
+            // Enforce Sort -> Reorder contract in the UI immediately.
+            boolean canReorder = uiStateStore.getPatchListSortMode() == UiStateStore.SortMode.DEFAULT
+                    && uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.FLAT;
+            reorderTgl.setEnabled(canReorder);
+            if (!canReorder)
+            {
+                reorderTgl.setSelected(false);
+            }
+
             farmPanel.rebuild();
         });
 

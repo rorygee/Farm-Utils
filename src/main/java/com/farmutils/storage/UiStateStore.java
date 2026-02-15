@@ -25,7 +25,13 @@ public class UiStateStore
     private ConfigManager configManager;
 
     private final Set<PatchId> disabledPatches = new HashSet<>();
-private ListViewMode viewMode = ListViewMode.ALL;
+	private ListViewMode viewMode = ListViewMode.ALL;
+
+	// Runtime-only: governs list shape/presentation (grouped vs flat). Not persisted.
+	private ViewMode patchListViewMode = ViewMode.DEFAULT;
+
+	// Runtime-only: governs ordering without writing back into reorder data.
+	private SortMode patchListSortMode = SortMode.DEFAULT;
 
     // Runtime-only (not persisted yet): gates group + row drag reordering.
     private boolean reorderModeEnabled = false;
@@ -33,11 +39,37 @@ private ListViewMode viewMode = ListViewMode.ALL;
     // Runtime-only: toolbar visibility (Option A). Not persisted.
     private boolean toolbarHidden = false;
 
-        public enum ListViewMode
+	public enum ListViewMode
 {
         ALL,
                 ACTIVE // placeholder for future (e.g., hide disabled/irrelevant)
                     }
+
+	/**
+	 * View mode for the patches list UI.
+	 *
+	 * DEFAULT: current grouped list.
+	 * FLAT: no grouping; a single flat list.
+	 */
+	public enum ViewMode
+	{
+		DEFAULT,
+		FLAT,
+		CLEAN
+	}
+
+	/**
+	 * Sort mode for the patches list.
+	 *
+	 * DEFAULT: respects user drag order (stored in UiStateStore ordering).
+	 * ALPHABETICAL: transient sort; does not write back.
+	 */
+	public enum SortMode
+	{
+		DEFAULT,
+		ALPHABETICAL,
+		PATCH_LABEL
+	}
 
     public boolean isGroupCollapsed(String groupName)
     {
@@ -73,6 +105,86 @@ private ListViewMode viewMode = ListViewMode.ALL;
 {
         this.viewMode = viewMode != null ? viewMode : ListViewMode.ALL;
     }
+
+	public ViewMode getPatchListViewMode()
+	{
+		return patchListViewMode;
+	}
+
+	/**
+	 * Sets the patches list view mode.
+	 *
+	 * Contract: changing ViewMode resets collapse state.
+	 */
+	public void setPatchListViewMode(ViewMode next)
+	{
+		ViewMode resolved = (next != null) ? next : ViewMode.DEFAULT;
+		if (this.patchListViewMode == resolved)
+		{
+			return;
+		}
+
+		this.patchListViewMode = resolved;
+
+		// Contract: FLAT view is scan-first and does not support patch reordering.
+		if (this.patchListViewMode == ViewMode.FLAT)
+		{
+			this.reorderModeEnabled = false;
+		}
+
+		// Collapse is currently persisted via config; for now we reset it by clearing the stored flags.
+		// (Later phases can move collapse to runtime-only state without changing callers.)
+		resetAllGroupCollapse();
+	}
+
+	public SortMode getPatchListSortMode()
+	{
+		return patchListSortMode;
+	}
+
+	/**
+	 * Sets the patches list sort mode.
+	 *
+	 * Contract: if sort != DEFAULT then reorder is forced OFF.
+	 */
+	public void setPatchListSortMode(SortMode next)
+	{
+		SortMode resolved = (next != null) ? next : SortMode.DEFAULT;
+		if (this.patchListSortMode == resolved)
+		{
+			return;
+		}
+
+		this.patchListSortMode = resolved;
+		if (this.patchListSortMode != SortMode.DEFAULT)
+		{
+			this.reorderModeEnabled = false;
+		}
+	}
+
+	private void resetAllGroupCollapse()
+	{
+		// Best-effort; if ConfigManager isn't injected yet, just no-op.
+		if (configManager == null)
+		{
+			return;
+		}
+
+		// Collapse keys are keyed by PatchId::getGroup.
+		Set<String> groups = new LinkedHashSet<>();
+		for (PatchId id : PatchId.values())
+		{
+			if (id.getGroup() != null)
+			{
+				groups.add(id.getGroup());
+			}
+		}
+
+		for (String g : groups)
+		{
+			setGroupCollapsed(g, false);
+		}
+	}
 
         public boolean isPatchDisabled(PatchId id)
 {

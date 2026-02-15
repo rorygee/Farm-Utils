@@ -24,6 +24,21 @@ public class PatchRow extends JPanel
 
     public PatchRow(PatchId id, PatchStore store, FarmutilsConfig config, Runnable onChange)
     {
+        this(id, store, config, true, null, null, onChange);
+    }
+
+    public PatchRow(PatchId id, PatchStore store, FarmutilsConfig config, boolean showIndicator, Runnable onChange)
+    {
+        this(id, store, config, showIndicator, null, null, onChange);
+    }
+
+    /**
+     * @param titleSuffix Optional suffix appended to the primary title line (e.g. " · Catherby").
+     * @param indicatorOverride Optional replacement for the secondary/indicator line.
+     *                          If null, the indicator shows patch state (Unknown/Growing/etc.).
+     */
+    public PatchRow(PatchId id, PatchStore store, FarmutilsConfig config, boolean showIndicator, String titleSuffix, String indicatorOverride, Runnable onChange)
+    {
         PatchView view = store.view(id);
 
         float scale = config.textScale().multiplier();
@@ -56,9 +71,15 @@ public class PatchRow extends JPanel
         {
             titleText = id.getLabel();
         }
+
+        if (titleSuffix != null && !titleSuffix.isBlank())
+        {
+            titleText = titleText + titleSuffix;
+        }
         title.setText(titleText);
 
-        JLabel indicator = new JLabel(indicatorText(view));
+        String secondaryText = (indicatorOverride != null) ? indicatorOverride : indicatorText(view);
+        JLabel indicator = new JLabel(secondaryText);
         indicator.setOpaque(false);
         indicator.setAlignmentX(Component.LEFT_ALIGNMENT);
         indicator.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -83,7 +104,10 @@ public class PatchRow extends JPanel
 
 
         leftCol.add(title);
-        leftCol.add(indicator);
+        if (showIndicator)
+        {
+            leftCol.add(indicator);
+        }
 
         add(leftCol, BorderLayout.CENTER);
 
