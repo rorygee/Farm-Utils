@@ -30,6 +30,9 @@ private ListViewMode viewMode = ListViewMode.ALL;
     // Runtime-only (not persisted yet): gates group + row drag reordering.
     private boolean reorderModeEnabled = false;
 
+    // Runtime-only: toolbar visibility (Option A). Not persisted.
+    private boolean toolbarHidden = false;
+
         public enum ListViewMode
 {
         ALL,
@@ -96,5 +99,15 @@ private ListViewMode viewMode = ListViewMode.ALL;
     public void setReorderModeEnabled(boolean enabled)
     {
         this.reorderModeEnabled = enabled;
+    }
+
+    public boolean isToolbarHidden()
+    {
+        return toolbarHidden;
+    }
+
+    public void setToolbarHidden(boolean hidden)
+    {
+        this.toolbarHidden = hidden;
     }
 }

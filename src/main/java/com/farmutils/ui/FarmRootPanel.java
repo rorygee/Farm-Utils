@@ -105,6 +105,8 @@ public class FarmRootPanel extends PluginPanel
     private final JComponent chromeDivider = divider();
 
     private final JTextField filterField = new JTextField();
+    private final JButton restoreToolbarButton = new JButton("▾");
+    private JToggleButton hideToolbarToggle;
 
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new PreferredCardPanel(cardLayout);
@@ -288,6 +290,31 @@ public class FarmRootPanel extends PluginPanel
         });
 
         filterRow.add(filterField, BorderLayout.CENTER);
+
+        // Restore toolbar button (only shown when toolbar is hidden).
+        restoreToolbarButton.setFocusable(false);
+        restoreToolbarButton.setMargin(new Insets(0, 6, 0, 6));
+        restoreToolbarButton.setToolTipText("Show toolbar");
+        restoreToolbarButton.setVisible(false);
+        restoreToolbarButton.addActionListener(e ->
+        {
+            // Best-effort: if the filter was focused before the click, restore focus after showing.
+            Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getPermanentFocusOwner();
+            boolean refocusFilter = (focusOwner == filterField);
+
+            if (uiStateStore != null)
+            {
+                uiStateStore.setToolbarHidden(false);
+            }
+
+            applyToolbarHiddenState();
+
+            if (refocusFilter)
+            {
+                SwingUtilities.invokeLater(() -> filterField.requestFocusInWindow());
+            }
+        });
+        filterRow.add(restoreToolbarButton, BorderLayout.EAST);
     }
 
     private void buildToolbarRow()
@@ -425,10 +452,6 @@ public class FarmRootPanel extends PluginPanel
         refreshBtn.setToolTipText(tooltip.apply("Refresh", "Re-read state / repaint"));
         styleButton.accept(refreshBtn);
 
-        JButton helpBtn = new JButton("?"); // Help / legend popover later
-        helpBtn.setToolTipText(tooltip.apply("Help", "Explain icons and states"));
-        styleButton.accept(helpBtn);
-
         // --- Suggested toggles (JToggleButton) ---
         JToggleButton reorderTgl = new JToggleButton("R");
         reorderTgl.setToolTipText(tooltip.apply("Reorder", "Enable drag reordering"));
@@ -459,9 +482,20 @@ public class FarmRootPanel extends PluginPanel
         stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Toggle state divider indicators"));
         styleButton.accept(stateLinesTgl);
 
-        JToggleButton compactChromeTgl = new JToggleButton("⤓"); // “compact toolbar/chrome” idea (future)
-        compactChromeTgl.setToolTipText(tooltip.apply("Compact chrome", "Reduce padding / density"));
-        styleButton.accept(compactChromeTgl);
+        hideToolbarToggle = new JToggleButton("▴"); // Hide toolbar (arrow up)
+        hideToolbarToggle.setToolTipText(tooltip.apply("Hide toolbar", "Collapse the toolbar row"));
+        hideToolbarToggle.getAccessibleContext().setAccessibleName("Hide toolbar");
+        styleButton.accept(hideToolbarToggle);
+
+        hideToolbarToggle.setSelected(uiStateStore != null && uiStateStore.isToolbarHidden());
+        hideToolbarToggle.addActionListener(e ->
+        {
+            if (uiStateStore != null)
+            {
+                uiStateStore.setToolbarHidden(hideToolbarToggle.isSelected());
+            }
+            applyToolbarHiddenState();
+        });
 
         // --- Layout: left cluster, subtle spacing between “groups”, glue, right utilities ---
         content.add(viewBtn);
@@ -472,8 +506,7 @@ public class FarmRootPanel extends PluginPanel
         content.add(stateLinesTgl);
         content.add(collapseAllBtn);
         content.add(refreshBtn);
-        content.add(compactChromeTgl);
-        content.add(helpBtn);
+        content.add(hideToolbarToggle);
 
         toolbarRow.add(content, BorderLayout.CENTER);
 
@@ -485,10 +518,30 @@ public class FarmRootPanel extends PluginPanel
     private void setPatchesChromeVisible(boolean visible)
     {
         filterRow.setVisible(visible);
-        toolbarRow.setVisible(visible);
         chromeDivider.setVisible(visible);
 
+        // Toolbar visibility is controlled by runtime state (Option A).
+        applyToolbarHiddenState();
+
         // Layout must recompute when hiding rows.
+        chrome.revalidate();
+        chrome.repaint();
+    }
+
+    private void applyToolbarHiddenState()
+    {
+        boolean patchesActive = (current == Mode.PATCHES);
+        boolean hidden = uiStateStore != null && uiStateStore.isToolbarHidden();
+
+        toolbarRow.setVisible(patchesActive && !hidden);
+        restoreToolbarButton.setVisible(patchesActive && hidden);
+
+        if (hideToolbarToggle != null && hideToolbarToggle.isSelected() != hidden)
+        {
+            hideToolbarToggle.setSelected(hidden);
+        }
+
+        // Keep BoxLayout from leaving stale space.
         chrome.revalidate();
         chrome.repaint();
     }
