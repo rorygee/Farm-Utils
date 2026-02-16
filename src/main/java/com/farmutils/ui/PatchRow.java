@@ -19,6 +19,9 @@ import java.awt.event.MouseEvent;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
+import java.util.List;
+import java.util.Set;
+
 import net.runelite.client.util.AsyncBufferedImage;
 
 public class PatchRow extends JPanel
@@ -29,11 +32,17 @@ public class PatchRow extends JPanel
     public static final String PROP_PATCH_DRAG_HANDLE = "farmutils.patchDragHandle";
 
     private final UiStateStore uiStateStore;
+    private final PatchId patchId;
     private final PatchView view;
+    private final FarmutilsConfig config;
     private JLabel titleLabel;
     private JLabel indicatorLabel;
     private JComponent iconComponent;
     private JComponent swatchComponent;
+
+	// Click vs drag guard (row background) to avoid accidental selection while dragging.
+	private Point selectionPressPoint;
+	private static final int SELECTION_DRAG_THRESHOLD_PX = 5;
 
     public PatchRow(PatchId id, PatchStore store, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, Runnable onChange)
     {
@@ -53,7 +62,9 @@ public class PatchRow extends JPanel
     public PatchRow(PatchId id, PatchStore store, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, boolean showIndicator, String titleSuffix, String indicatorOverride, Runnable onChange)
     {
         this.uiStateStore = uiStateStore;
+        this.patchId = id;
         this.view = store.view(id);
+        this.config = config;
 
         PatchView view = this.view;
 
@@ -95,6 +106,16 @@ public class PatchRow extends JPanel
         title.setText(titleText);
 
         String secondaryText = (indicatorOverride != null) ? indicatorOverride : indicatorText(view);
+
+		boolean showHidden = uiStateStore != null && uiStateStore.isShowDisabledPatches();
+		boolean hiddenByPatch = uiStateStore != null && uiStateStore.isPatchDisabled(id);
+		boolean hiddenByGroup = uiStateStore != null && uiStateStore.isGroupHidden(id.getGroup());
+		boolean hiddenVisible = showHidden && (hiddenByPatch || hiddenByGroup);
+		if (hiddenVisible && showIndicator)
+		{
+			// Suffix only on the indicator line to avoid layout shifts.
+			secondaryText = secondaryText + " · Hidden";
+		}
         JLabel indicator = new JLabel(secondaryText);
         this.indicatorLabel = indicator;
         indicator.setOpaque(false);
@@ -241,6 +262,20 @@ public class PatchRow extends JPanel
         // Apply state-text coloring for the modes that are meant to do so.
         applyIndicatorColorFromMode();
 
+		// If this patch is hidden (but currently visible due to the toggle), reduce emphasis.
+		if (hiddenVisible)
+		{
+			if (titleLabel != null)
+			{
+				titleLabel.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+			}
+			if (indicatorLabel != null && indicatorLabel.getForeground().equals(ColorScheme.LIGHT_GRAY_COLOR))
+			{
+				indicatorLabel.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+			}
+			// Tooltip remains unchanged.
+		}
+
         JPopupMenu menu = new JPopupMenu();
 
         for (PatchState state : PatchState.values())
@@ -286,35 +321,233 @@ public class PatchRow extends JPanel
             menu.add(item);
         }
 
-        addMouseListener(new MouseAdapter()
-        {
-            @Override
-            public void mousePressed(MouseEvent e)
-            {
-                if (e.isConsumed())
-                {
-                    return;
-                }
-                if (e.isPopupTrigger())
-                {
-                    menu.show(e.getComponent(), e.getX(), e.getY());
-                }
-            }
+		menu.addSeparator();
 
-            @Override
-            public void mouseReleased(MouseEvent e)
-            {
-                if (e.isConsumed())
-                {
-                    return;
-                }
-                if (e.isPopupTrigger())
-                {
-                    menu.show(e.getComponent(), e.getX(), e.getY());
-                }
-            }
-        });
+		JMenuItem hidePatchItem = new JMenuItem();
+		hidePatchItem.addActionListener(e ->
+		{
+			if (this.uiStateStore != null)
+			{
+				boolean disabled = this.uiStateStore.isPatchDisabled(this.patchId);
+				if (disabled)
+				{
+					// Unhiding a patch that lives inside a hidden group should also unhide the group,
+					// but leave other patches in that group hidden.
+					String groupKey = this.patchId != null ? this.patchId.getGroup() : null;
+					if (groupKey != null && this.uiStateStore.isGroupHidden(groupKey))
+					{
+						this.uiStateStore.setGroupHidden(groupKey, false);
+					}
+					this.uiStateStore.setPatchDisabled(this.patchId, false);
+				}
+				else
+				{
+					this.uiStateStore.setPatchDisabled(this.patchId, true);
+				}
+				onChange.run();
+			}
+		});
+		menu.add(hidePatchItem);
+
+		// Selection + context menu handling lives here (PatchRow), because PatchId is the stable identity.
+		// This avoids coupling selection behavior to the wrapper panels created during FarmPanel.rebuild().
+		//
+		// Interaction table:
+		// - LClick: select only (clears others)
+		// - Ctrl+LClick: toggle
+		// - Shift+LClick: range from anchor
+		// - Ctrl+Shift+LClick: additive range
+		// - RClick: if row unselected => select only then show menu; if selected => keep selection
+		installSelectionAndContextHandlers(menu, hidePatchItem);
     }
+
+	private void installSelectionAndContextHandlers(JPopupMenu menu, JMenuItem hidePatchItem)
+	{
+		MouseAdapter adapter = new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				if (e.isConsumed())
+				{
+					return;
+				}
+				if (SwingUtilities.isLeftMouseButton(e) && !e.isPopupTrigger())
+				{
+					selectionPressPoint = e.getPoint();
+				}
+				if (e.isPopupTrigger())
+				{
+					showContextMenuRespectingSelection(e, menu, hidePatchItem);
+				}
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				if (e.isConsumed())
+				{
+					return;
+				}
+				if (e.isPopupTrigger())
+				{
+					showContextMenuRespectingSelection(e, menu, hidePatchItem);
+					return;
+				}
+				if (!SwingUtilities.isLeftMouseButton(e) || uiStateStore == null || patchId == null)
+				{
+					return;
+				}
+
+				// Drag guard: if the user moved the pointer significantly, do not toggle selection.
+				if (selectionPressPoint != null)
+				{
+					int dx = Math.abs(e.getX() - selectionPressPoint.x);
+					int dy = Math.abs(e.getY() - selectionPressPoint.y);
+					if (dx + dy >= SELECTION_DRAG_THRESHOLD_PX)
+					{
+						selectionPressPoint = null;
+						return;
+					}
+				}
+				selectionPressPoint = null;
+
+				handleSelectionClick(e);
+			}
+		};
+
+		// Attach to the row and the "content" children so normal clicks work anywhere on the row.
+		// Swatch/drag-handle should not affect selection, but should still support right-click menus.
+		addMouseListener(adapter);
+		if (titleLabel != null) titleLabel.addMouseListener(adapter);
+		if (indicatorLabel != null) indicatorLabel.addMouseListener(adapter);
+		if (iconComponent != null) iconComponent.addMouseListener(adapter);
+
+		MouseAdapter popupOnly = new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				if (!e.isConsumed() && e.isPopupTrigger())
+				{
+					showContextMenuRespectingSelection(e, menu, hidePatchItem);
+				}
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				if (!e.isConsumed() && e.isPopupTrigger())
+				{
+					showContextMenuRespectingSelection(e, menu, hidePatchItem);
+				}
+			}
+		};
+		if (swatchComponent != null) swatchComponent.addMouseListener(popupOnly);
+		Object h = getClientProperty(PROP_PATCH_DRAG_HANDLE);
+		if (h instanceof JComponent)
+		{
+			((JComponent) h).addMouseListener(popupOnly);
+		}
+	}
+
+	private void showContextMenuRespectingSelection(MouseEvent e, JPopupMenu menu, JMenuItem hidePatchItem)
+	{
+		if (uiStateStore != null && patchId != null)
+		{
+			// Desktop norm: right-click on unselected row selects it first.
+			// Right-click on selected row preserves multi-selection.
+			if (!uiStateStore.isSelected(patchId))
+			{
+				uiStateStore.selectOnly(patchId);
+				uiStateStore.setSelectionAnchor(patchId);
+				repaintSelectionSurface();
+			}
+		}
+		// Update context item label at show time so it always reflects current state.
+		if (hidePatchItem != null && uiStateStore != null)
+		{
+			boolean disabled = uiStateStore.isPatchDisabled(patchId);
+			hidePatchItem.setText(disabled ? "Unhide patch" : "Hide patch");
+		}
+		menu.show(e.getComponent(), e.getX(), e.getY());
+	}
+
+	private void handleSelectionClick(MouseEvent e)
+	{
+		boolean ctrl = (e.getModifiersEx() & MouseEvent.CTRL_DOWN_MASK) != 0;
+		boolean shift = (e.getModifiersEx() & MouseEvent.SHIFT_DOWN_MASK) != 0;
+
+		List<PatchId> visibleOrder = uiStateStore.getLastVisiblePatchOrder();
+		PatchId anchor = uiStateStore.getSelectionAnchor();
+
+		if (!ctrl && !shift)
+		{
+			// Desktop norm (as requested): clicking an already-selected row clears selection.
+			if (uiStateStore.isSelected(patchId))
+			{
+				uiStateStore.clearSelection();
+				uiStateStore.setSelectionAnchor(null);
+			}
+			else
+			{
+				uiStateStore.selectOnly(patchId);
+				uiStateStore.setSelectionAnchor(patchId);
+			}
+			repaintSelectionSurface();
+			return;
+		}
+
+		if (ctrl && !shift)
+		{
+			uiStateStore.toggleSelected(patchId);
+			uiStateStore.setSelectionAnchor(patchId);
+			repaintSelectionSurface();
+			return;
+		}
+
+		if (!ctrl && shift)
+		{
+			if (anchor == null)
+			{
+				uiStateStore.selectOnly(patchId);
+				uiStateStore.setSelectionAnchor(patchId);
+			}
+			else
+			{
+				uiStateStore.selectRange(visibleOrder, anchor, patchId, false);
+			}
+			repaintSelectionSurface();
+			return;
+		}
+
+		// ctrl + shift
+		if (anchor == null)
+		{
+			uiStateStore.toggleSelected(patchId);
+			uiStateStore.setSelectionAnchor(patchId);
+		}
+		else
+		{
+			uiStateStore.selectRange(visibleOrder, anchor, patchId, true);
+		}
+		repaintSelectionSurface();
+	}
+
+	private void repaintSelectionSurface()
+	{
+		// Selection visuals are painted directly from UiStateStore state.
+		// Repaint up the tree so other rows reflect selection changes without a full rebuild.
+		SwingUtilities.invokeLater(() ->
+		{
+			Component c = PatchRow.this;
+			while (c != null)
+			{
+				c.repaint();
+				c = c.getParent();
+			}
+		});
+	}
 
     public void setReorderHandleVisible(boolean visible)
     {
@@ -419,6 +652,24 @@ public class PatchRow extends JPanel
     {
         super.paintComponent(g);
 
+		// Selected styling: paint-only (no insets/pref-size changes) to avoid layout jitter.
+		if (uiStateStore != null && patchId != null && uiStateStore.isSelected(patchId))
+		{
+			Graphics2D sg = (Graphics2D) g.create();
+			try
+			{
+				sg.setColor(selectionOutlineColor());
+				int w = getWidth();
+				int h = getHeight();
+				// Single, uniform outline (no left accent) to avoid "thicker" edges on some DPI scales.
+				sg.drawRect(0, 0, Math.max(0, w - 1), Math.max(0, h - 1));
+			}
+			finally
+			{
+				sg.dispose();
+			}
+		}
+
         if (uiStateStore == null)
         {
             return;
@@ -470,6 +721,23 @@ public class PatchRow extends JPanel
             g2.dispose();
         }
     }
+
+	private Color selectionOutlineColor()
+	{
+		FarmutilsConfig.SelectionOutlineColor mode = (config != null)
+				? config.selectionOutlineColor()
+				: FarmutilsConfig.SelectionOutlineColor.WHITE;
+
+		// Keep alpha so selection reads as a UI affordance, not a semantic highlight.
+		switch (mode)
+		{
+			case ACCENT_ORANGE:
+				return new Color(ColorScheme.BRAND_ORANGE.getRed(), ColorScheme.BRAND_ORANGE.getGreen(), ColorScheme.BRAND_ORANGE.getBlue(), 200);
+			case WHITE:
+			default:
+				return new Color(255, 255, 255, 180);
+		}
+	}
 
     private int computeContentMargin()
     {

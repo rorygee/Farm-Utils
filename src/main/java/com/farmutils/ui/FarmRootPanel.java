@@ -657,9 +657,33 @@ public class FarmRootPanel extends PluginPanel
             farmPanel.rebuild();
         });
 
-        JToggleButton showDisabledTgl = new JToggleButton("D"); // existing scope placeholder
-        showDisabledTgl.setToolTipText(tooltip.apply("Show disabled", "Toggle disabled patches visibility"));
+        JToggleButton showDisabledTgl = new JToggleButton("👁");
+        showDisabledTgl.getAccessibleContext().setAccessibleName("Show hidden patches");
         styleButton.accept(showDisabledTgl);
+
+		if (uiStateStore != null)
+		{
+			showDisabledTgl.setSelected(uiStateStore.isShowDisabledPatches());
+		}
+
+		Runnable refreshShowDisabledTooltip = () ->
+		{
+			boolean on = showDisabledTgl.isSelected();
+			showDisabledTgl.setToolTipText(tooltip.apply(
+				on ? "Hide hidden patches" : "Show hidden patches",
+				on ? "Hide disabled patches from the list" : "Show disabled patches in the list"));
+		};
+		refreshShowDisabledTooltip.run();
+
+		showDisabledTgl.addActionListener(e ->
+		{
+			if (uiStateStore != null)
+			{
+				uiStateStore.setShowDisabledPatches(showDisabledTgl.isSelected());
+			}
+			refreshShowDisabledTooltip.run();
+			farmPanel.rebuild();
+		});
 
         JToggleButton highlightsTgl = new JToggleButton("H"); // highlight visibility (future)
         highlightsTgl.setToolTipText(tooltip.apply("Show highlights", "Toggle highlight indicators"));

@@ -24,7 +24,18 @@ public class UiStateStore
     @Inject
     private ConfigManager configManager;
 
+	// Runtime-only: user-intent hide/disable state per patch.
+	// Default is enabled (not present in the set).
     private final Set<PatchId> disabledPatches = new HashSet<>();
+
+	// Runtime-only: user-intent hidden state per main heading group (e.g. Activity/Allotment/etc.).
+	// Groups are identified by their canonical groupName String (PatchId::getGroup).
+	// Default is visible (not present in the set).
+	private final Set<String> hiddenGroups = new HashSet<>();
+
+	// Runtime-only: governs whether disabled patches are rendered in the list.
+	// When false, disabled patches are filtered out.
+	private boolean showDisabledPatches = false;
 	private ListViewMode viewMode = ListViewMode.ALL;
 
 	// Runtime-only: governs list shape/presentation (grouped vs flat). Not persisted.
@@ -41,6 +52,14 @@ public class UiStateStore
 
     // Runtime-only: toolbar visibility (Option A). Not persisted.
     private boolean toolbarHidden = false;
+
+	// --- Patch selection (runtime-only) ---
+	// Selection is PatchId-based so it can survive list rebuilds (filters/view changes).
+	private final Set<PatchId> selectedPatches = new HashSet<>();
+	private PatchId selectionAnchor = null;
+	// Last rendered visible order (post-filter/post-sort/post-group/flatten).
+	// Used for shift-range selection and for returning selected patches in visible order.
+	private List<PatchId> lastVisiblePatchOrder = List.of();
 
 	public enum ListViewMode
 {
@@ -230,22 +249,82 @@ public class UiStateStore
 		}
 	}
 
-        public boolean isPatchDisabled(PatchId id)
-{
-        return disabledPatches.contains(id);
-    }
+	public boolean isPatchDisabled(PatchId id)
+	{
+		return id != null && disabledPatches.contains(id);
+	}
 
-        public void setPatchDisabled(PatchId id, boolean disabled)
-{
-        if (disabled)
-            {
-                        disabledPatches.add(id);
-        }
-        else
-        {
-                    disabledPatches.remove(id);
-        }
-    }
+	public void setPatchDisabled(PatchId id, boolean disabled)
+	{
+		if (id == null)
+		{
+			return;
+		}
+		if (disabled)
+		{
+			disabledPatches.add(id);
+		}
+		else
+		{
+			disabledPatches.remove(id);
+		}
+	}
+
+	public void togglePatchDisabled(PatchId id)
+	{
+		setPatchDisabled(id, !isPatchDisabled(id));
+	}
+
+	public Set<PatchId> getDisabledPatchesView()
+	{
+		return Collections.unmodifiableSet(disabledPatches);
+	}
+
+	public boolean isGroupHidden(String groupKey)
+	{
+		return groupKey != null && hiddenGroups.contains(groupKey);
+	}
+
+	public void setGroupHidden(String groupKey, boolean hidden)
+	{
+		if (groupKey == null)
+		{
+			return;
+		}
+		if (hidden)
+		{
+			hiddenGroups.add(groupKey);
+		}
+		else
+		{
+			hiddenGroups.remove(groupKey);
+		}
+	}
+
+	public void toggleGroupHidden(String groupKey)
+	{
+		setGroupHidden(groupKey, !isGroupHidden(groupKey));
+	}
+
+	public Set<String> getHiddenGroupsView()
+	{
+		return Collections.unmodifiableSet(hiddenGroups);
+	}
+
+	public boolean isShowDisabledPatches()
+	{
+		return showDisabledPatches;
+	}
+
+	public void setShowDisabledPatches(boolean v)
+	{
+		this.showDisabledPatches = v;
+	}
+
+	public void toggleShowDisabledPatches()
+	{
+		this.showDisabledPatches = !this.showDisabledPatches;
+	}
 
     public boolean isReorderModeEnabled()
     {
@@ -266,4 +345,165 @@ public class UiStateStore
     {
         this.toolbarHidden = hidden;
     }
+
+	// -------------------------------------------------------------------------
+	// Selection API (runtime-only)
+	// -------------------------------------------------------------------------
+
+	public boolean isSelected(PatchId id)
+	{
+		return id != null && selectedPatches.contains(id);
+	}
+
+	public Set<PatchId> getSelectedPatchesView()
+	{
+		return Collections.unmodifiableSet(selectedPatches);
+	}
+
+	public void clearSelection()
+	{
+		selectedPatches.clear();
+		selectionAnchor = null;
+	}
+
+	public void selectOnly(PatchId id)
+	{
+		selectedPatches.clear();
+		if (id != null)
+		{
+			selectedPatches.add(id);
+		}
+	}
+
+	public void toggleSelected(PatchId id)
+	{
+		if (id == null)
+		{
+			return;
+		}
+		if (selectedPatches.contains(id))
+		{
+			selectedPatches.remove(id);
+		}
+		else
+		{
+			selectedPatches.add(id);
+		}
+	}
+
+	public PatchId getSelectionAnchor()
+	{
+		return selectionAnchor;
+	}
+
+	public void setSelectionAnchor(PatchId id)
+	{
+		this.selectionAnchor = id;
+	}
+
+	public void setLastVisiblePatchOrder(List<PatchId> order)
+	{
+		if (order == null)
+		{
+			this.lastVisiblePatchOrder = List.of();
+			return;
+		}
+		// Store a defensive copy (runtime only).
+		this.lastVisiblePatchOrder = List.copyOf(order);
+	}
+
+	public List<PatchId> getLastVisiblePatchOrder()
+	{
+		return lastVisiblePatchOrder;
+	}
+
+	/**
+	 * Shift-range selection.
+	 *
+	 * @param visibleOrder the list order the user can see (post-filter/post-sort)
+	 * @param anchor starting point of the range
+	 * @param end ending point of the range
+	 * @param additive if true, adds the range to the existing selection; otherwise replaces it
+	 */
+	public void selectRange(List<PatchId> visibleOrder, PatchId anchor, PatchId end, boolean additive)
+	{
+		if (visibleOrder == null || visibleOrder.isEmpty() || end == null)
+		{
+			if (!additive)
+			{
+				selectOnly(end);
+			}
+			else
+			{
+				selectedPatches.add(end);
+			}
+			return;
+		}
+
+		int a = (anchor != null) ? visibleOrder.indexOf(anchor) : -1;
+		int b = visibleOrder.indexOf(end);
+		if (b < 0)
+		{
+			// End isn't currently visible; treat as a single selection.
+			if (!additive)
+			{
+				selectOnly(end);
+			}
+			else
+			{
+				selectedPatches.add(end);
+			}
+			return;
+		}
+
+		if (a < 0)
+		{
+			// No valid anchor in the visible list.
+			if (!additive)
+			{
+				selectOnly(end);
+			}
+			else
+			{
+				selectedPatches.add(end);
+			}
+			return;
+		}
+
+		int lo = Math.min(a, b);
+		int hi = Math.max(a, b);
+		if (!additive)
+		{
+			selectedPatches.clear();
+		}
+		for (int i = lo; i <= hi; i++)
+		{
+			PatchId id = visibleOrder.get(i);
+			if (id != null)
+			{
+				selectedPatches.add(id);
+			}
+		}
+	}
+
+	/**
+	 * Selected patches ordered as they appear in the last rendered list.
+	 * Useful for future "Add selected patches to route" actions.
+	 */
+	public List<PatchId> getSelectedPatchesInVisibleOrder()
+	{
+		if (lastVisiblePatchOrder == null || lastVisiblePatchOrder.isEmpty() || selectedPatches.isEmpty())
+		{
+			return List.of();
+		}
+		List<PatchId> out = new ArrayList<>();
+		for (PatchId id : lastVisiblePatchOrder)
+		{
+			if (selectedPatches.contains(id))
+			{
+				out.add(id);
+			}
+		}
+		return out;
+	}
 }

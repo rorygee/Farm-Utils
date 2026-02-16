@@ -8,6 +8,7 @@ import com.farmutils.config.NavContent;
 import com.farmutils.config.NavColumns;
 
 
+
 @ConfigGroup("farmutils")
 public interface FarmutilsConfig extends Config
 {
@@ -105,6 +106,24 @@ public interface FarmutilsConfig extends Config
     default boolean showPatchCategoryPrefix()
     {
         return false;
+    }
+
+    enum SelectionOutlineColor
+    {
+        WHITE,
+        ACCENT_ORANGE
+    }
+
+    @ConfigItem(
+            keyName = "selectionOutlineColor",
+            name = "Selection outline colour",
+            description = "Outline colour used to indicate selected patches in the patch list.",
+            position = 5,
+            section = appearanceSection
+    )
+    default SelectionOutlineColor selectionOutlineColor()
+    {
+        return SelectionOutlineColor.WHITE;
     }
 
     @ConfigItem(

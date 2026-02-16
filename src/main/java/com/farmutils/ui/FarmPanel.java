@@ -258,9 +258,17 @@ public class FarmPanel extends JPanel
 
             boolean hasFilter = filterText != null && !filterText.isEmpty();
 
+			boolean showDisabled = uiStateStore != null && uiStateStore.isShowDisabledPatches();
+
+			// Runtime-only: capture the exact visible render order of PatchIds for shift-range selection
+			// and future Routes panel actions ("selected patches in visible order").
+			java.util.List<PatchId> visiblePatchOrder = new java.util.ArrayList<>();
+
             Map<String, List<PatchId>> grouped = Arrays.stream(PatchId.values())
                 .filter(id -> !(config.hideQuestPatches() && id.getQualifier() == PatchQualifier.QUEST))
-                    .filter(id -> !(uiStateStore.getViewMode() == UiStateStore.ListViewMode.ACTIVE && uiStateStore.isPatchDisabled(id)))
+				// Centralized include decision: when show-hidden is OFF, filter out both disabled patches
+				// and patches whose main heading group is hidden.
+				.filter(id -> shouldIncludePatch(id, showDisabled))
 
                 .sorted(
                             Comparator.comparing(PatchId::getGroup)
@@ -375,6 +383,8 @@ public class FarmPanel extends JPanel
                                 titleSuffixForCleanPatchLabel(id),
                                 secondaryOverrideForSort(id),
                                 this::rebuild);
+						// Record visible order in the exact order rows are rendered.
+						visiblePatchOrder.add(id);
                         // No patch reordering in FLAT view.
                         row.setReorderHandleVisible(false);
 
@@ -404,6 +414,12 @@ public class FarmPanel extends JPanel
                     list.add(entriesPanel);
                 }
 
+				// Selection uses visible order; keep it fresh even in early-return branches.
+				if (uiStateStore != null)
+				{
+					uiStateStore.setLastVisiblePatchOrder(visiblePatchOrder);
+				}
+
                 list.revalidate();
                 list.repaint();
                 return;
@@ -422,11 +438,13 @@ public class FarmPanel extends JPanel
                         .filter(id -> matchesFilter(id, groupName))
                         .collect(Collectors.toList());
 
-
-                if (visibleIds.isEmpty())
-                {
-                    continue;
-                }
+				// Header suppression rule:
+				// - show-hidden OFF: only render group header if it has at least one visible child
+				// - show-hidden ON: always render the group header (even if filter yields zero children)
+				if (visibleIds.isEmpty() && !showDisabled)
+				{
+					continue;
+				}
 
                 JPanel groupBlock = new JPanel();
                 groupBlock.setLayout(new BoxLayout(groupBlock, BoxLayout.Y_AXIS));
@@ -462,7 +480,9 @@ public class FarmPanel extends JPanel
 
                 boolean reorderEnabled = uiStateStore.isReorderModeEnabled();
                 visibleCollapsibleGroups.add(groupName);
-                JComponent header = fullWidth(createGroupHeader(groupName, collapsedForHeader, aggregate, reorderEnabled));
+				// Pass the full set of patches in this main group so "Hide group" can disable all inner patches.
+				// IMPORTANT: use orderedIds (pre-filter) so the action is not dependent on search/view filters.
+				JComponent header = fullWidth(createGroupHeader(groupName, orderedIds, collapsedForHeader, aggregate, reorderEnabled, showDisabled));
                 groupBlock.add(header);
 
                 // Bind drag handle for this group (handle-only; does not interfere with expand/collapse).
@@ -477,7 +497,9 @@ public class FarmPanel extends JPanel
                 }
 
                 boolean showBody = (!collapsed || hasFilter);
-                if (showBody)
+				// Avoid dangling dividers / empty body panels when a group header is shown due to
+				// show-hidden override but has zero visible children under current filters.
+                if (showBody && !visibleIds.isEmpty())
                 {
                     groupBlock.add(divider());
 
@@ -536,6 +558,8 @@ public class FarmPanel extends JPanel
                                 titleSuffixForCleanPatchLabel(id),
                                 secondaryOverrideForSort(id),
                                 this::rebuild);
+						// Record visible order in the exact order rows are rendered.
+						visiblePatchOrder.add(id);
                         boolean headerOwnsThisRow = (isMultiSlot || forceLocationHeader);
                         row.setReorderHandleVisible(reorderEnabled && !headerOwnsThisRow);
 
@@ -590,6 +614,12 @@ public class FarmPanel extends JPanel
 
             list.revalidate();
             list.repaint();
+
+			// Persist last visible render order for range selection + future Routes integration.
+			if (uiStateStore != null)
+			{
+				uiStateStore.setLastVisiblePatchOrder(visiblePatchOrder);
+			}
 
             if (onAfterRebuild != null)
             {
@@ -664,8 +694,35 @@ public class FarmPanel extends JPanel
         UNKNOWN
     }
 
+	/**
+	 * Centralized include decision for PatchIds.
+	 *
+	 * When show-hidden is OFF, patches are filtered out if:
+	 * - the patch itself is disabled, OR
+	 * - its main heading group is hidden.
+	 *
+	 * When show-hidden is ON, everything is included (visibility is handled via styling).
+	 */
+	private boolean shouldIncludePatch(PatchId id, boolean showDisabled)
+	{
+		if (id == null)
+		{
+			return false;
+		}
+		if (showDisabled || uiStateStore == null)
+		{
+			return true;
+		}
+		if (uiStateStore.isPatchDisabled(id))
+		{
+			return false;
+		}
+		String groupKey = id.getGroup();
+		return !uiStateStore.isGroupHidden(groupKey);
+	}
 
-    private Component createGroupHeader(String groupName, boolean collapsed, AggregateState aggregate, boolean reorderEnabled)
+
+	private Component createGroupHeader(String groupName, List<PatchId> groupPatchIds, boolean collapsed, AggregateState aggregate, boolean reorderEnabled, boolean showDisabled)
 {
         float scale = config.textScale().multiplier();
         boolean emphasize = config.emphasizeHeaders();
@@ -694,6 +751,14 @@ public class FarmPanel extends JPanel
         textLabel.setOpaque(false);
         textLabel.setForeground(HEADER_ORANGE);
         textLabel.setFont(UiFont.scaled(textLabel.getFont(), headerScale, style));
+
+		boolean groupHidden = uiStateStore != null && uiStateStore.isGroupHidden(groupName);
+		if (showDisabled && groupHidden)
+		{
+			textLabel.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+			textLabel.setText(groupName + " · Hidden");
+			triLabel.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+		}
 
         // Outer row
         JPanel header = new JPanel();
@@ -726,10 +791,114 @@ public class FarmPanel extends JPanel
             @Override
             public void mouseClicked(MouseEvent e)
             {
+				// Left-click toggles collapse. Right-click should only open the context menu.
+				if (!SwingUtilities.isLeftMouseButton(e) || e.isPopupTrigger())
+				{
+					return;
+				}
                 uiStateStore.toggleGroupCollapsed(groupName);
                 rebuild();
             }
         });
+
+		// Header context menu: Hide group / Unhide group
+		JPopupMenu menu = new JPopupMenu();
+		JMenuItem hideGroupItem = new JMenuItem();
+		JMenuItem unhideAllItem = new JMenuItem("Unhide all");
+		hideGroupItem.addActionListener(e ->
+		{
+			if (FarmPanel.this.uiStateStore != null)
+			{
+				boolean hidden = FarmPanel.this.uiStateStore.isGroupHidden(groupName);
+				if (!hidden)
+				{
+					// Hiding a group is a bulk action: mark the group hidden AND disable all patches within it.
+					FarmPanel.this.uiStateStore.setGroupHidden(groupName, true);
+					if (groupPatchIds != null)
+					{
+						for (PatchId id : groupPatchIds)
+						{
+							FarmPanel.this.uiStateStore.setPatchDisabled(id, true);
+						}
+					}
+				}
+				else
+				{
+					// Unhiding a group is also a bulk action: clear the group-hidden flag AND enable all patches within it.
+					FarmPanel.this.uiStateStore.setGroupHidden(groupName, false);
+					if (groupPatchIds != null)
+					{
+						for (PatchId id : groupPatchIds)
+						{
+							FarmPanel.this.uiStateStore.setPatchDisabled(id, false);
+						}
+					}
+				}
+				rebuild();
+			}
+		});
+		menu.add(hideGroupItem);
+		unhideAllItem.addActionListener(e ->
+		{
+			if (FarmPanel.this.uiStateStore == null || groupPatchIds == null)
+			{
+				return;
+			}
+			// Unhide all patches in this group. If the group itself is hidden, clear that too so the result is visible.
+			FarmPanel.this.uiStateStore.setGroupHidden(groupName, false);
+			for (PatchId id : groupPatchIds)
+			{
+				FarmPanel.this.uiStateStore.setPatchDisabled(id, false);
+			}
+			rebuild();
+		});
+		menu.add(unhideAllItem);
+
+		MouseAdapter popupListener = new MouseAdapter()
+		{
+			private void maybeShow(MouseEvent e)
+			{
+				if (e.isConsumed() || !e.isPopupTrigger())
+				{
+					return;
+				}
+				if (hideGroupItem != null && FarmPanel.this.uiStateStore != null)
+				{
+					boolean hidden = FarmPanel.this.uiStateStore.isGroupHidden(groupName);
+					hideGroupItem.setText(hidden ? "Unhide group" : "Hide group");
+
+					// Only show "Unhide all" if there is at least one disabled patch in this group.
+					boolean anyDisabled = false;
+					if (groupPatchIds != null)
+					{
+						for (PatchId id : groupPatchIds)
+						{
+							if (FarmPanel.this.uiStateStore.isPatchDisabled(id))
+							{
+								anyDisabled = true;
+								break;
+							}
+						}
+					}
+					unhideAllItem.setVisible(anyDisabled);
+				}
+				menu.show(e.getComponent(), e.getX(), e.getY());
+			}
+
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				maybeShow(e);
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				maybeShow(e);
+			}
+		};
+		header.addMouseListener(popupListener);
+		clickable.addMouseListener(popupListener);
 
         // RIGHT: drag handle only
         JComponent dragHandle = createGroupDragHandle();
