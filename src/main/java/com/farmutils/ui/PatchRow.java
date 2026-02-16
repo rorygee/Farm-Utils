@@ -229,6 +229,29 @@ public class PatchRow extends JPanel
             {
                 if (SwingUtilities.isLeftMouseButton(e) && !e.isPopupTrigger())
                 {
+                    // Modifier-click on the swatch should batch-cycle the current multi-selection.
+                    // This mirrors the PatchRow context menu batching semantics, but is opt-in via
+                    // Ctrl/Shift to preserve the fast single-patch cycle default.
+                    if ((e.isControlDown() || e.isShiftDown()))
+                    {
+                        Set<PatchId> targets = getActionTargetPatchIds();
+                        if (targets.size() > 1)
+                        {
+                            store.cycleHighlightSlot(id);
+                            int newSlot = store.getHighlightSlot(id);
+                            for (PatchId pid : targets)
+                            {
+                                if (!pid.equals(id))
+                                {
+                                    store.setHighlightSlot(pid, newSlot);
+                                }
+                            }
+                            onChange.run();
+                            e.consume();
+                            return;
+                        }
+                    }
+
                     store.cycleHighlightSlot(id);
                     onChange.run();
                     e.consume();
@@ -262,6 +285,35 @@ public class PatchRow extends JPanel
         // Apply state-text coloring for the modes that are meant to do so.
         applyIndicatorColorFromMode();
 
+        // State indicator click: cycle patch state.
+        // Unifies with the modifier-based batching semantics used by the swatch:
+        // - Normal click affects only the clicked patch.
+        // - Ctrl/Shift click, when a multi-selection exists and the clicked patch is selected,
+        //   sets all selected patches to the same resulting state.
+        indicator.addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mousePressed(MouseEvent e)
+            {
+                if (!SwingUtilities.isLeftMouseButton(e) || e.isPopupTrigger())
+                {
+                    return;
+                }
+
+                // Modifier batching is opt-in to avoid accidental mass edits.
+                boolean batch = (e.isControlDown() || e.isShiftDown());
+                Set<PatchId> targets = (batch ? getActionTargetPatchIds() : Set.of(patchId));
+
+                PatchState next = nextState(store.view(patchId).getRecord().map(PatchRecord::getState).orElse(null));
+                for (PatchId pid : targets)
+                {
+                    store.save(pid, next);
+                }
+                onChange.run();
+                e.consume();
+            }
+        });
+
 		// If this patch is hidden (but currently visible due to the toggle), reduce emphasis.
 		if (hiddenVisible)
 		{
@@ -283,7 +335,12 @@ public class PatchRow extends JPanel
             JMenuItem item = new JMenuItem("Set: " + pretty(state));
             item.addActionListener(e ->
             {
-                store.save(id, state);
+                // Batch injection point: patch-level actions invoked from a selected row should apply to the
+                // whole selection. This gives stable multi-select semantics for future features (e.g. routes).
+                for (PatchId pid : getActionTargetPatchIds())
+                {
+                    store.save(pid, state);
+                }
                 onChange.run();
             });
             menu.add(item);
@@ -294,7 +351,10 @@ public class PatchRow extends JPanel
         JMenuItem clear = new JMenuItem("Clear (Unknown)");
         clear.addActionListener(e ->
         {
-            store.clear(id);
+            for (PatchId pid : getActionTargetPatchIds())
+            {
+                store.clear(pid);
+            }
             onChange.run();
         });
         menu.add(clear);
@@ -304,7 +364,10 @@ public class PatchRow extends JPanel
         JMenuItem highlightNone = new JMenuItem("Highlight: None");
         highlightNone.addActionListener(e ->
         {
-            store.setHighlightSlot(id, 0);
+            for (PatchId pid : getActionTargetPatchIds())
+            {
+                store.setHighlightSlot(pid, 0);
+            }
             onChange.run();
         });
         menu.add(highlightNone);
@@ -315,7 +378,10 @@ public class PatchRow extends JPanel
             JMenuItem item = new JMenuItem("Highlight: Slot " + slot);
             item.addActionListener(e ->
             {
-                store.setHighlightSlot(id, s);
+                for (PatchId pid : getActionTargetPatchIds())
+                {
+                    store.setHighlightSlot(pid, s);
+                }
                 onChange.run();
             });
             menu.add(item);
@@ -328,21 +394,27 @@ public class PatchRow extends JPanel
 		{
 			if (this.uiStateStore != null)
 			{
-				boolean disabled = this.uiStateStore.isPatchDisabled(this.patchId);
-				if (disabled)
+				// Compute targets at action time so right-click selection rules remain authoritative.
+				Set<PatchId> targets = getActionTargetPatchIds();
+				boolean clickedDisabled = this.uiStateStore.isPatchDisabled(this.patchId);
+				boolean disable = !clickedDisabled;
+				for (PatchId pid : targets)
 				{
-					// Unhiding a patch that lives inside a hidden group should also unhide the group,
-					// but leave other patches in that group hidden.
-					String groupKey = this.patchId != null ? this.patchId.getGroup() : null;
-					if (groupKey != null && this.uiStateStore.isGroupHidden(groupKey))
+					if (pid == null)
 					{
-						this.uiStateStore.setGroupHidden(groupKey, false);
+						continue;
 					}
-					this.uiStateStore.setPatchDisabled(this.patchId, false);
-				}
-				else
-				{
-					this.uiStateStore.setPatchDisabled(this.patchId, true);
+					if (!disable)
+					{
+						// Unhiding a patch that lives inside a hidden group should also unhide the group,
+						// but leave other patches in that group hidden.
+						String groupKey = pid.getGroup();
+						if (groupKey != null && this.uiStateStore.isGroupHidden(groupKey))
+						{
+							this.uiStateStore.setGroupHidden(groupKey, false);
+						}
+					}
+					this.uiStateStore.setPatchDisabled(pid, disable);
 				}
 				onChange.run();
 			}
@@ -360,6 +432,30 @@ public class PatchRow extends JPanel
 		// - RClick: if row unselected => select only then show menu; if selected => keep selection
 		installSelectionAndContextHandlers(menu, hidePatchItem);
     }
+
+
+	/**
+	 * Determines which PatchIds a context-menu action should apply to.
+	 *
+	 * If the right-clicked row is part of a multi-selection, patch-level actions should apply to the whole
+	 * selection; otherwise they apply only to the clicked patch.
+	 */
+	private Set<PatchId> getActionTargetPatchIds()
+	{
+		if (uiStateStore == null || patchId == null)
+		{
+			return Set.of(patchId);
+		}
+
+		Set<PatchId> selected = uiStateStore.getSelectedPatchesView();
+		if (selected != null && selected.size() > 1 && selected.contains(patchId))
+		{
+			// Never expose/mutate the live selection set directly.
+			return Set.copyOf(selected);
+		}
+
+		return Set.of(patchId);
+	}
 
 	private void installSelectionAndContextHandlers(JPopupMenu menu, JMenuItem hidePatchItem)
 	{
@@ -615,6 +711,31 @@ public class PatchRow extends JPanel
     private static int clamp(int value, int min, int max)
     {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static PatchState nextState(PatchState current)
+    {
+        PatchState[] values = PatchState.values();
+        if (values.length == 0)
+        {
+            return current;
+        }
+
+        if (current == null)
+        {
+            return values[0];
+        }
+
+        for (int i = 0; i < values.length; i++)
+        {
+            if (values[i] == current)
+            {
+                return values[(i + 1) % values.length];
+            }
+        }
+
+        // Unknown enum value (shouldn't happen) – fall back to first.
+        return values[0];
     }
 
     private void applySwatchColor(JPanel swatch, int slot)

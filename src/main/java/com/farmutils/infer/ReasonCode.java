@@ -1,0 +1,15 @@
+package com.farmutils.infer;
+
+public enum ReasonCode
+{
+    NO_OBSERVATIONS,
+    NO_DURATION_MODEL,
+    NO_SCHEDULE,
+    DURATION_ELAPSED,
+    DERIVED_FROM_TIME,
+    DERIVED_FROM_EVENTS,
+    CONFLICT_WITH_OBSERVATION,
+    MANUAL_LOCK_ACTIVE,
+    DURATION_WINDOW,
+    CLEARED
+}

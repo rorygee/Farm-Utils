@@ -5,6 +5,9 @@ import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
 import com.farmutils.model.PatchSource;
 import com.farmutils.FarmutilsConfig;
+import com.farmutils.infer.InferenceEngine;
+import com.farmutils.infer.Observation;
+import com.farmutils.infer.ObservationSource;
 import java.util.Optional;
 import java.util.Map;
 import java.util.HashMap;
@@ -12,6 +15,7 @@ import javax.inject.Inject;
 import net.runelite.client.config.ConfigManager;
 import com.farmutils.model.PatchView;
 import java.time.Duration;
+import java.time.Instant;
 import javax.inject.Singleton;
 
 @Singleton
@@ -25,6 +29,9 @@ public class PatchStore
 
     @Inject
     private ConfigManager configManager;
+
+    @Inject
+    private InferenceEngine inferenceEngine;
 
     // Runtime-only highlight slots. 0 = none.
     private final Map<PatchId, Integer> highlightSlots = new HashMap<>();
@@ -87,11 +94,18 @@ public class PatchStore
         long now = System.currentTimeMillis();
         String raw = state.name() + "|" + now;
         configManager.setConfiguration(GROUP, KEY_PREFIX + id.storageKey(), raw);
+
+        // v0: feed inference engine via existing manual/debug interactions.
+        inferenceEngine.onObservation(Observation.patchStateSet(id, state, Instant.ofEpochMilli(now), ObservationSource.MANUAL_DEBUG));
     }
 
     public void clear(PatchId id)
     {
+        long now = System.currentTimeMillis();
         configManager.unsetConfiguration(GROUP, KEY_PREFIX + id.storageKey());
+
+        // v0: feed inference engine via existing manual/debug interactions.
+        inferenceEngine.onObservation(Observation.patchStateCleared(id, Instant.ofEpochMilli(now), ObservationSource.MANUAL_DEBUG));
     }
 
 
