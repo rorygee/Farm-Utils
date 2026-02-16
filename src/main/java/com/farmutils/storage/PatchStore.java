@@ -6,6 +6,8 @@ import com.farmutils.model.PatchState;
 import com.farmutils.model.PatchSource;
 import com.farmutils.FarmutilsConfig;
 import java.util.Optional;
+import java.util.Map;
+import java.util.HashMap;
 import javax.inject.Inject;
 import net.runelite.client.config.ConfigManager;
 import com.farmutils.model.PatchView;
@@ -23,6 +25,9 @@ public class PatchStore
 
     @Inject
     private ConfigManager configManager;
+
+    // Runtime-only highlight slots. 0 = none.
+    private final Map<PatchId, Integer> highlightSlots = new HashMap<>();
 
     private static final long STALE_MILLIS = Duration.ofDays(7).toMillis();
 
@@ -88,4 +93,40 @@ public class PatchStore
     {
         configManager.unsetConfiguration(GROUP, KEY_PREFIX + id.storageKey());
     }
+
+
+public int getHighlightSlot(PatchId id)
+{
+    if (id == null)
+    {
+        return 0;
+    }
+    return highlightSlots.getOrDefault(id, 0);
+}
+
+public void setHighlightSlot(PatchId id, int slot)
+{
+    if (id == null)
+    {
+        return;
+    }
+
+    int clamped = Math.max(0, Math.min(4, slot));
+    if (clamped == 0)
+    {
+        highlightSlots.remove(id);
+    }
+    else
+    {
+        highlightSlots.put(id, clamped);
+    }
+}
+
+public int cycleHighlightSlot(PatchId id)
+{
+    int current = getHighlightSlot(id);
+    int next = (current + 1) % 5;
+    setHighlightSlot(id, next);
+    return next;
+}
 }

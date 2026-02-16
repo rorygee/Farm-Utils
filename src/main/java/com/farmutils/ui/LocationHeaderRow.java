@@ -27,6 +27,7 @@ public final class LocationHeaderRow extends JPanel
 
         int padY = Math.max(3, Math.round(PAD_Y * scale));
         int padX = Math.max(6, Math.round(PAD_X * scale));
+
         setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
         setAlignmentX(Component.LEFT_ALIGNMENT);
 

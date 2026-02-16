@@ -666,8 +666,27 @@ public class FarmRootPanel extends PluginPanel
         styleButton.accept(highlightsTgl);
 
         JToggleButton stateLinesTgl = new JToggleButton("L"); // state divider visibility (future)
-        stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Toggle state divider indicators"));
+        stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Cycle patch state indicator line mode"));
         styleButton.accept(stateLinesTgl);
+
+        // Runtime-only: cycles how patch state is indicated on each row.
+        if (uiStateStore != null)
+        {
+            stateLinesTgl.setSelected(uiStateStore.getStateIndicatorMode() != com.farmutils.storage.UiStateStore.StateIndicatorMode.OFF);
+        }
+        stateLinesTgl.addActionListener(e ->
+        {
+            if (uiStateStore == null)
+            {
+                return;
+            }
+
+            com.farmutils.storage.UiStateStore.StateIndicatorMode next = uiStateStore.cycleStateIndicatorMode();
+            stateLinesTgl.setSelected(next != com.farmutils.storage.UiStateStore.StateIndicatorMode.OFF);
+            stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Mode: " + next.name()));
+
+            farmPanel.rebuild();
+        });
 
         hideToolbarToggle = new JToggleButton("▴"); // Hide toolbar (arrow up)
         hideToolbarToggle.setToolTipText(tooltip.apply("Hide toolbar", "Collapse the toolbar row"));

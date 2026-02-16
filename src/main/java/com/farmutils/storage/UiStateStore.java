@@ -33,6 +33,9 @@ public class UiStateStore
 	// Runtime-only: governs ordering without writing back into reorder data.
 	private SortMode patchListSortMode = SortMode.DEFAULT;
 
+	// Runtime-only: patch state indicator line presentation (cycled via toolbar "L").
+	private StateIndicatorMode stateIndicatorMode = StateIndicatorMode.FULL_WIDTH;
+
     // Runtime-only (not persisted yet): gates group + row drag reordering.
     private boolean reorderModeEnabled = false;
 
@@ -69,6 +72,19 @@ public class UiStateStore
 		DEFAULT,
 		ALPHABETICAL,
 		PATCH_LABEL
+	}
+
+	/**
+	 * Controls how patch state is indicated on each row.
+	 * Runtime-only: no config persistence yet.
+	 */
+	public enum StateIndicatorMode
+	{
+		OFF,
+		FULL_WIDTH,
+		RIGHT_STRIP,
+		TITLE_ONLY,
+		FULL_AND_TITLE
 	}
 
     public boolean isGroupCollapsed(String groupName)
@@ -140,6 +156,34 @@ public class UiStateStore
 	public SortMode getPatchListSortMode()
 	{
 		return patchListSortMode;
+	}
+
+	public StateIndicatorMode getStateIndicatorMode()
+	{
+		return stateIndicatorMode;
+	}
+
+	public void setStateIndicatorMode(StateIndicatorMode mode)
+	{
+		this.stateIndicatorMode = (mode != null) ? mode : StateIndicatorMode.FULL_WIDTH;
+	}
+
+	public StateIndicatorMode cycleStateIndicatorMode()
+	{
+		StateIndicatorMode[] modes = StateIndicatorMode.values();
+		int idx = 0;
+		StateIndicatorMode cur = getStateIndicatorMode();
+		for (int i = 0; i < modes.length; i++)
+		{
+			if (modes[i] == cur)
+			{
+				idx = i;
+				break;
+			}
+		}
+		StateIndicatorMode next = modes[(idx + 1) % modes.length];
+		setStateIndicatorMode(next);
+		return next;
 	}
 
 	/**

@@ -8,6 +8,7 @@ import com.farmutils.model.PatchView;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
 import net.runelite.client.ui.ClientUI;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 
@@ -61,6 +62,7 @@ public class FarmPanel extends JPanel
     private final UiStateStore uiStateStore;
     private final ClientUI clientUI;
     private final FarmutilsConfig config;
+    private final ItemManager itemManager;
 
     private final JScrollPane scrollPane;
 
@@ -130,7 +132,7 @@ public class FarmPanel extends JPanel
 
 
     @Inject
-    public FarmPanel(PatchStore store, UiStateStore uiStateStore, ClientUI clientUI, FarmutilsConfig config)
+    public FarmPanel(PatchStore store, UiStateStore uiStateStore, ClientUI clientUI, FarmutilsConfig config, ItemManager itemManager)
     {
         super(new BorderLayout());
 
@@ -138,6 +140,7 @@ public class FarmPanel extends JPanel
         this.uiStateStore = uiStateStore;
         this.clientUI = clientUI;
         this.config = config;
+        this.itemManager = itemManager;
 
         // Painted “floor” for this view
         setOpaque(true);
@@ -365,6 +368,8 @@ public class FarmPanel extends JPanel
                         PatchRow row = new PatchRow(
                                 id,
                                 store,
+                                uiStateStore,
+                                itemManager,
                                 config,
                                 showIndicator,
                                 titleSuffixForCleanPatchLabel(id),
@@ -524,6 +529,8 @@ public class FarmPanel extends JPanel
                         PatchRow row = new PatchRow(
                                 id,
                                 store,
+                                uiStateStore,
+                                itemManager,
                                 config,
                                 showIndicator,
                                 titleSuffixForCleanPatchLabel(id),
@@ -670,11 +677,20 @@ public class FarmPanel extends JPanel
 
         JLabel triLabel = new JLabel(tri);
         triLabel.setOpaque(false);
-        triLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 6));
         triLabel.setForeground(collapsed ? aggregateColor(aggregate) : HEADER_ORANGE);
         triLabel.setFont(UiFont.scaled(triLabel.getFont(), headerScale, style));
 
-        JLabel textLabel = new JLabel(groupName);
+        int iconSize = UiRowMetrics.iconSize(scale);
+        int gapAfterIcon = UiRowMetrics.iconGap(scale);
+
+        Dimension triDim = new Dimension(iconSize, iconSize);
+        triLabel.setPreferredSize(triDim);
+        triLabel.setMinimumSize(triDim);
+        triLabel.setMaximumSize(triDim);
+        triLabel.setHorizontalAlignment(SwingConstants.CENTER);
+
+
+    JLabel textLabel = new JLabel(groupName);
         textLabel.setOpaque(false);
         textLabel.setForeground(HEADER_ORANGE);
         textLabel.setFont(UiFont.scaled(textLabel.getFont(), headerScale, style));
@@ -696,8 +712,9 @@ public class FarmPanel extends JPanel
         clickable.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         clickable.add(triLabel);
+        clickable.add(Box.createRigidArea(new Dimension(gapAfterIcon, 1)));
         clickable.add(textLabel);
-        clickable.add(Box.createHorizontalGlue()); // <-- KEY: this makes clickable consume remaining space
+        clickable.add(Box.createHorizontalGlue());
 
         // Ensure BoxLayout lets it stretch wide
         Dimension pref = clickable.getPreferredSize();
