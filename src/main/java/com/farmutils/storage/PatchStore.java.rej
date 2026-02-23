@@ -1,0 +1,10 @@
+--- src/main/java/com/farmutils/storage/PatchStore.java	2026-02-21 01:33:28.502105986 +0000
++++ src/main/java/com/farmutils/storage/PatchStore.java	2026-02-21 01:33:28.510607474 +0000
+@@ -6,6 +6,7 @@
+ import com.farmutils.model.PatchSource;
+ import com.farmutils.FarmutilsConfig;
+ import com.farmutils.infer.InferenceEngine;
++import com.farmutils.infer.GrowthProgress;
+ import com.farmutils.infer.Observation;
+ import com.farmutils.infer.ObservationSource;
+ import java.util.Optional;

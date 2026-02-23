@@ -5,6 +5,9 @@ import com.farmutils.model.PatchId;
 import com.farmutils.model.PatchRecord;
 import com.farmutils.model.PatchState;
 import com.farmutils.model.PatchView;
+import com.farmutils.infer.GrowthProgress;
+import com.farmutils.infer.PatchInference;
+import com.farmutils.infer.InferredStage;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
 import net.runelite.client.game.ItemManager;
@@ -18,9 +21,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import java.util.List;
 import java.util.Set;
+import java.util.Optional;
+import java.util.OptionalInt;
 
 import net.runelite.client.util.AsyncBufferedImage;
 
@@ -32,6 +39,7 @@ public class PatchRow extends JPanel
     public static final String PROP_PATCH_DRAG_HANDLE = "farmutils.patchDragHandle";
 
     private final UiStateStore uiStateStore;
+    private final PatchStore store;
     private final PatchId patchId;
     private final PatchView view;
     private final FarmutilsConfig config;
@@ -62,6 +70,7 @@ public class PatchRow extends JPanel
     public PatchRow(PatchId id, PatchStore store, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, boolean showIndicator, String titleSuffix, String indicatorOverride, Runnable onChange)
     {
         this.uiStateStore = uiStateStore;
+        this.store = store;
         this.patchId = id;
         this.view = store.view(id);
         this.config = config;
@@ -123,6 +132,13 @@ public class PatchRow extends JPanel
         indicator.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         indicator.setFont(UiFont.scaled(indicator.getFont(), scale * 0.95f, Font.PLAIN));
 
+        // Optional secondary-line indent (visual hierarchy), kept layout-local (no rewrites).
+        int secondaryIndentPx = (config != null) ? Math.max(0, config.secondaryTextIndentPx()) : 0;
+        if (secondaryIndentPx > 0)
+        {
+            indicator.setBorder(BorderFactory.createEmptyBorder(0, secondaryIndentPx, 0, 0));
+        }
+
         // Prevent long titles from inflating preferred width (causes RuneLite viewport inset/border flips).
 // We deliberately allow clipping for now; full text remains available via tooltip.
         Dimension titlePref = title.getPreferredSize();
@@ -181,7 +197,15 @@ public class PatchRow extends JPanel
         iconLabel.setFont(UiFont.scaled(iconLabel.getFont(), scale * 0.9f, Font.PLAIN));
 
 // Async item sprite pipeline (RuneLite): getImage returns an AsyncBufferedImage.
-        AsyncBufferedImage asyncImg = (itemManager != null) ? itemManager.getImage(ItemID.WEEDS) : null;
+        int iconItemId = ItemID.WEEDS;
+        OptionalInt cropItem = (store != null) ? store.getCropItemId(id) : OptionalInt.empty();
+        if (cropItem.isPresent())
+        {
+            iconItemId = cropItem.getAsInt();
+        }
+
+        // Async item sprite pipeline (RuneLite): getImage returns an AsyncBufferedImage.
+        AsyncBufferedImage asyncImg = (itemManager != null) ? itemManager.getImage(iconItemId) : null;
         if (asyncImg != null)
         {
             // Keep the label repainting while the image loads.
@@ -665,18 +689,74 @@ public class PatchRow extends JPanel
         return view.isStale() ? base + " · Stale" : base;
     }
 
-    private static String buildTooltip(PatchView view)
+    
+    private String buildTooltip(PatchView view)
     {
+        String updated;
         if (!view.getRecord().isPresent())
         {
-            return "Unknown: no record for this patch yet. Updated: Never.";
+            updated = "Updated: Never.";
+        }
+        else
+        {
+            PatchRecord record = view.getRecord().get();
+            updated = "Updated: " + timeAgo(record.getUpdatedAtMillis()) + ".";
         }
 
-        PatchRecord record = view.getRecord().get();
-        String updated = "Updated: " + timeAgo(record.getUpdatedAtMillis()) + ".";
-        String stale = view.isStale() ? " (Stale)" : "";
+        // Crop context (when known). Keep calm: no 'State' or 'Source' language.
+        String crop = (store != null) ? store.getCropName(patchId).orElse(null) : null;
+        String cropPrefix = (crop != null && !crop.isBlank()) ? (crop + ". ") : "";
 
-        return pretty(record.getState()) + stale + ". " + updated + " Source: " + view.getSource().name() + ".";
+        String etaPart = "";
+        if (store != null && config != null)
+        {
+            Optional<PatchInference> infOpt = store.getInference(patchId);
+            if (infOpt.isPresent())
+            {
+                PatchInference inf = infOpt.get();
+                if (inf.getStage() == InferredStage.GROWING)
+                {
+                    Instant now = Instant.now();
+                    Instant est = config.conservativeTimeEstimates() ? inf.getLatestReadyAt() : inf.getEarliestReadyAt();
+                    if (est == null)
+                    {
+                        // Fallback if only one bound is available.
+                        est = (inf.getLatestReadyAt() != null) ? inf.getLatestReadyAt() : inf.getEarliestReadyAt();
+                    }
+                    if (est != null)
+                    {
+                        etaPart = "Est completion: " + formatEta(est, now) + ".";
+                    }
+                }
+            }
+        }
+
+        if (etaPart.isBlank())
+        {
+            return cropPrefix + updated;
+        }
+
+        return cropPrefix + updated + " " + etaPart;
+    }
+
+    private static String formatEta(Instant eta, Instant now)
+    {
+        if (eta == null)
+        {
+            return "";
+        }
+        if (now == null)
+        {
+            now = Instant.now();
+        }
+
+        String hhmm = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(eta);
+        long mins = ChronoUnit.MINUTES.between(now, eta);
+        if (mins <= 0)
+        {
+            return hhmm + " (now)";
+        }
+        return hhmm + " (in " + mins + "m)";
     }
 
     private static String timeAgo(long updatedAtMillis)
@@ -822,9 +902,56 @@ public class PatchRow extends JPanel
             int xL = margin;
             int xR = getWidth() - margin - 1;
 
+            // When progress is available, keep the computed end so FULL_AND_TITLE can render
+            // a consistent title underline (no "full length" overwrite).
+            Optional<GrowthProgress> progressOpt = Optional.empty();
+            int xProgressEnd = xL;
+            Color remainder = UiColors.remainderColor(c, getBackground());
+            if (remainder == null)
+            {
+                remainder = new Color(
+                        ColorScheme.DARKER_GRAY_COLOR.getRed(),
+                        ColorScheme.DARKER_GRAY_COLOR.getGreen(),
+                        ColorScheme.DARKER_GRAY_COLOR.getBlue(),
+                        180);
+            }
+
             if (mode == UiStateStore.StateIndicatorMode.FULL_WIDTH || mode == UiStateStore.StateIndicatorMode.FULL_AND_TITLE)
             {
-                g2.drawLine(xL, y, xR, y);
+                // Progress remainder shading is only meaningful for growing/ready.
+                PatchState s = view != null && view.getRecord().isPresent() ? view.getRecord().get().getState() : null;
+                boolean allowProgress = (s == PatchState.GROWING || s == PatchState.READY);
+
+                progressOpt = (allowProgress && store != null)
+                        ? store.getGrowthProgress(patchId)
+                        : Optional.empty();
+
+                if (!progressOpt.isPresent())
+                {
+                    // Current behavior: solid semantic line across full width.
+                    g2.drawLine(xL, y, xR, y);
+                }
+                else
+                {
+                    GrowthProgress gp = progressOpt.get();
+
+                    g2.setColor(remainder);
+                    g2.drawLine(xL, y, xR, y);
+
+                    g2.setColor(c);
+                    int w = Math.max(0, xR - xL);
+                    float p01 = gp.getProgress01();
+                    if (p01 < 0f) p01 = 0f;
+                    if (p01 > 1f) p01 = 1f;
+
+                    int px = Math.round(w * p01);
+                    xProgressEnd = Math.min(xR, xL + px);
+
+                    if (xProgressEnd > xL)
+                    {
+                        g2.drawLine(xL, y, xProgressEnd, y);
+                    }
+                }
             }
 
             if (mode == UiStateStore.StateIndicatorMode.RIGHT_STRIP)
@@ -834,7 +961,34 @@ public class PatchRow extends JPanel
 
             if (mode == UiStateStore.StateIndicatorMode.FULL_AND_TITLE)
             {
-                drawTitleLine(g2, y);
+                if (!progressOpt.isPresent())
+                {
+                    drawTitleLine(g2, y);
+                }
+                else
+                {
+                    // Mirror the same remainder+progress semantics within the title region.
+                    // This avoids overwriting the full-width progress line with a "full-length" underline.
+                    if (titleLabel != null)
+                    {
+                        Rectangle r = SwingUtilities.convertRectangle(titleLabel.getParent(), titleLabel.getBounds(), this);
+                        int prefW = titleLabel.getPreferredSize() != null ? titleLabel.getPreferredSize().width : r.width;
+                        int w = Math.min(prefW, r.width);
+
+                        int tx1 = r.x;
+                        int tx2 = r.x + Math.max(0, w);
+
+                        g2.setColor(remainder);
+                        g2.drawLine(tx1, y, tx2, y);
+
+                        int end = Math.min(tx2, xProgressEnd);
+                        if (end > tx1)
+                        {
+                            g2.setColor(c);
+                            g2.drawLine(tx1, y, end, y);
+                        }
+                    }
+                }
             }
         }
         finally
@@ -903,30 +1057,10 @@ public class PatchRow extends JPanel
         g2.drawLine(x1, y, x2, y);
     }
 
-    private static Color stateColor(PatchView view)
+    private Color stateColor(PatchView view)
     {
-        if (view == null || !view.getRecord().isPresent())
-        {
-            return null;
-        }
-
-        PatchState s = view.getRecord().get().getState();
-        // Muted semantic colors; can be centralized later.
-        switch (s)
-        {
-            case READY:
-                return new Color(90, 170, 110);
-            case GROWING:
-                return new Color(110, 150, 210);
-            case DISEASED:
-                return new Color(190, 150, 70);
-            case DEAD:
-                return new Color(200, 90, 90);
-            case EMPTY:
-                return new Color(170, 170, 170);
-            default:
-                return null;
-        }
+        // Unknown uses null for indicator-line painting (keeps the list calm).
+        return UiColors.stateColorOrNull(view, config);
     }
 
     private void applyIndicatorColorFromMode()
@@ -938,6 +1072,12 @@ public class PatchRow extends JPanel
 
         UiStateStore.StateIndicatorMode mode = uiStateStore.getStateIndicatorMode();
         Color c = stateColor(view);
+
+        // Allow Unknown to be configured for state-text colouring, while keeping the indicator-line calm.
+        if (c == null && config != null && view != null && (view.getRecord() == null || !view.getRecord().isPresent()))
+        {
+            c = config.stateColorUnknown();
+        }
 
         if (c != null && (mode == UiStateStore.StateIndicatorMode.TITLE_ONLY || mode == UiStateStore.StateIndicatorMode.FULL_AND_TITLE))
         {

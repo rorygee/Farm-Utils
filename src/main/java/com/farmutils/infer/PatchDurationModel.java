@@ -3,8 +3,9 @@ package com.farmutils.infer;
 import com.farmutils.model.PatchId;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.OptionalInt;
 
-/**
+    /**
  * Returns a duration estimate until completion for a patch.
  *
  * v0: this is intentionally nullable/optional.
@@ -12,6 +13,40 @@ import java.util.Optional;
 public interface PatchDurationModel
 {
     Optional<Duration> durationToComplete(PatchId patchId);
+
+    /**
+     * Optional maximum "growth stage" for a patch type.
+     *
+     * <p>This is intentionally separate from timing models. It allows callers (UI/inference)
+     * to compute a generic stage fraction (0..1) when a concrete stage observation exists,
+     * without hardcoding per-patch-type constants into rendering code.</p>
+     */
+    default OptionalInt getMaxGrowthStage(PatchId patchId)
+    {
+        return OptionalInt.empty();
+    }
+
+    /**
+     * Optional duration of a single growth stage, when a patch type has discrete stages.
+     *
+     * <p>Used for conservative, stepwise stage progression (e.g. remote patches) without requiring
+     * constant re-observation.</p>
+     */
+    default Optional<Duration> getGrowthStageDuration(PatchId patchId)
+    {
+        return Optional.empty();
+    }
+
+    /**
+     * Optional maximum "harvest depletion stage" for a patch when it is harvestable or ready.
+     *
+     * <p>For herbs this corresponds to the 3 harvestable object variants (full -> fewer picks).
+     * Other patch types may return empty until their models are implemented.</p>
+     */
+    default OptionalInt getMaxHarvestStage(PatchId patchId)
+    {
+        return OptionalInt.empty();
+    }
 
     /**
      * v2: Optional multi-stage schedule anchored at {@code lastObservedAt}.
@@ -61,4 +96,27 @@ public interface PatchDurationModel
 
         return Optional.empty();
     }
+
+    /**
+     * v4: bounded readiness window anchored at the moment a growth stage is observed.
+     *
+     * <p>The returned durations represent time remaining until {@link InferredStage#READY} from the
+     * observation moment, expressed as a conservative min/max window. Implementations may return empty
+     * when stage-based timing is unknown for the patch.</p>
+     */
+    default Optional<ReadyWindow> getReadyWindowFromStage(PatchId patchId, int observedGrowthStage)
+    {
+        return Optional.empty();
+    }
+
+
+    /**
+     * v4b: stage readiness window with information about whether this observation was captured
+     * at the moment the stage changed (transition) vs. a baseline read.
+     */
+    default Optional<ReadyWindow> getReadyWindowFromStage(PatchId patchId, int observedGrowthStage, boolean stageTransition)
+    {
+        return getReadyWindowFromStage(patchId, observedGrowthStage);
+    }
+
 }

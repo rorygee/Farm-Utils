@@ -5,23 +5,9 @@ import com.farmutils.ui.FarmRootPanel;
 import com.farmutils.ui.FarmStubPanel;
 import com.farmutils.storage.UiStateStore;
 import com.farmutils.infer.InferenceEngine;
-import com.farmutils.observe.Varbit4771AllotmentVarbitObserver;
-import com.farmutils.observe.Varbit4771BelladonnaVarbitObserver;
-import com.farmutils.observe.Varbit4771BushVarbitObserver;
-import com.farmutils.observe.Varbit4771CactusVarbitObserver;
-import com.farmutils.observe.Varbit4771CalquatVarbitObserver;
-import com.farmutils.observe.Varbit4772BelladonnaVarbitObserver;
-import com.farmutils.observe.Varbit4772BushVarbitObserver;
-import com.farmutils.observe.Varbit4773CalquatVarbitObserver;
-import com.farmutils.observe.Varbit7904CactusVarbitObserver;
 import com.farmutils.observe.Varbit4771HerbVarbitObserver;
-import com.farmutils.observe.Varbit4772AllotmentVarbitObserver;
-import com.farmutils.observe.Varbit4773AllotmentVarbitObserver;
-import com.farmutils.observe.Varbit4773FlowerVarbitObserver;
-import com.farmutils.observe.Varbit4774AllotmentVarbitObserver;
 import com.farmutils.observe.Varbit4774HerbVarbitObserver;
 import com.farmutils.observe.Varbit4775HerbVarbitObserver;
-import com.farmutils.observe.Varbit7906FlowerVarbitObserver;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -39,7 +25,6 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 
 import javax.inject.Inject;
-import javax.swing.SwingUtilities;
 
 @Slf4j
 @PluginDescriptor(
@@ -83,60 +68,15 @@ public class FarmutilsPlugin extends Plugin
 	// Track inference updates so the UI can refresh only when outputs change.
 	private long lastInferenceChangeCounter = -1;
 
-	// Paint-only refresh cadence for time-driven progress (bounded to <= 1/min).
-	private long lastRepaintEpochMinute = -1;
-
 
 	@Inject
 	private Varbit4771HerbVarbitObserver varbit4771HerbVarbitObserver;
-
-	@Inject
-	private Varbit4771AllotmentVarbitObserver varbit4771AllotmentVarbitObserver;
-
-	@Inject
-	private Varbit4771BelladonnaVarbitObserver varbit4771BelladonnaVarbitObserver;
-
-	@Inject
-	private Varbit4771BushVarbitObserver varbit4771BushVarbitObserver;
-
-	@Inject
-	private Varbit4771CactusVarbitObserver varbit4771CactusVarbitObserver;
-
-	@Inject
-	private Varbit4771CalquatVarbitObserver varbit4771CalquatVarbitObserver;
-
-	@Inject
-	private Varbit4772BelladonnaVarbitObserver varbit4772BelladonnaVarbitObserver;
-
-	@Inject
-	private Varbit4772BushVarbitObserver varbit4772BushVarbitObserver;
-
-	@Inject
-	private Varbit4773CalquatVarbitObserver varbit4773CalquatVarbitObserver;
-
-	@Inject
-	private Varbit7904CactusVarbitObserver varbit7904CactusVarbitObserver;
-
-	@Inject
-	private Varbit4772AllotmentVarbitObserver varbit4772AllotmentVarbitObserver;
-
-	@Inject
-	private Varbit4773AllotmentVarbitObserver varbit4773AllotmentVarbitObserver;
-
-	@Inject
-	private Varbit4773FlowerVarbitObserver varbit4773FlowerVarbitObserver;
-
-	@Inject
-	private Varbit4774AllotmentVarbitObserver varbit4774AllotmentVarbitObserver;
 
 	@Inject
 	private Varbit4774HerbVarbitObserver varbit4774HerbVarbitObserver;
 
 	@Inject
 	private Varbit4775HerbVarbitObserver varbit4775HerbVarbitObserver;
-
-	@Inject
-	private Varbit7906FlowerVarbitObserver varbit7906FlowerVarbitObserver;
 
 	@Override
 	protected void startUp()
@@ -160,7 +100,6 @@ public class FarmutilsPlugin extends Plugin
 
 		clientToolbar.addNavigation(navButton);
 		farmPanel.refreshUiFromConfig();
-		lastInferenceChangeCounter = inferenceEngine != null ? inferenceEngine.getChangeCounter() : -1;
 
 		rootPanel.refreshUiFromConfig();
 	}
@@ -184,22 +123,8 @@ public class FarmutilsPlugin extends Plugin
 		{
 			lastRegionId = -1;
 			varbit4771HerbVarbitObserver.reset();
-			varbit4771AllotmentVarbitObserver.reset();
-			varbit4772AllotmentVarbitObserver.reset();
-			varbit4773AllotmentVarbitObserver.reset();
-			varbit4773FlowerVarbitObserver.reset();
-			varbit4774AllotmentVarbitObserver.reset();
 			varbit4774HerbVarbitObserver.reset();
 			varbit4775HerbVarbitObserver.reset();
-			varbit7906FlowerVarbitObserver.reset();
-			varbit4771BelladonnaVarbitObserver.reset();
-			varbit4772BelladonnaVarbitObserver.reset();
-			varbit4771BushVarbitObserver.reset();
-			varbit4772BushVarbitObserver.reset();
-			varbit4771CactusVarbitObserver.reset();
-			varbit7904CactusVarbitObserver.reset();
-			varbit4771CalquatVarbitObserver.reset();
-			varbit4773CalquatVarbitObserver.reset();
 		}
 	}
 
@@ -211,7 +136,6 @@ public class FarmutilsPlugin extends Plugin
 			return;
 		}
 
-
 		// Region changes can briefly surface default/placeholder varbit values (often 0) before
 		// the real state arrives. Resetting our baselines when the region id changes prevents
 		// false transitions like "weeds -> ready" being interpreted as a planted event.
@@ -221,23 +145,9 @@ public class FarmutilsPlugin extends Plugin
 			if (regionId != lastRegionId)
 			{
 				lastRegionId = regionId;
-				varbit4771HerbVarbitObserver.reset();
-				varbit4771AllotmentVarbitObserver.reset();
-				varbit4772AllotmentVarbitObserver.reset();
-				varbit4773AllotmentVarbitObserver.reset();
-				varbit4773FlowerVarbitObserver.reset();
-				varbit4774AllotmentVarbitObserver.reset();
+					varbit4771HerbVarbitObserver.reset();
 				varbit4774HerbVarbitObserver.reset();
 				varbit4775HerbVarbitObserver.reset();
-				varbit7906FlowerVarbitObserver.reset();
-				varbit4771BelladonnaVarbitObserver.reset();
-				varbit4772BelladonnaVarbitObserver.reset();
-				varbit4771BushVarbitObserver.reset();
-				varbit4772BushVarbitObserver.reset();
-				varbit4771CactusVarbitObserver.reset();
-				varbit7904CactusVarbitObserver.reset();
-				varbit4771CalquatVarbitObserver.reset();
-				varbit4773CalquatVarbitObserver.reset();
 			}
 		}
 
@@ -245,22 +155,8 @@ public class FarmutilsPlugin extends Plugin
 
 		// v4: first real observation source + time progression spine.
 		varbit4771HerbVarbitObserver.onGameTick();
-		varbit4771AllotmentVarbitObserver.onGameTick();
-		varbit4772AllotmentVarbitObserver.onGameTick();
-		varbit4773AllotmentVarbitObserver.onGameTick();
-		varbit4773FlowerVarbitObserver.onGameTick();
-		varbit4774AllotmentVarbitObserver.onGameTick();
 		varbit4774HerbVarbitObserver.onGameTick();
 		varbit4775HerbVarbitObserver.onGameTick();
-		varbit7906FlowerVarbitObserver.onGameTick();
-		varbit4771BelladonnaVarbitObserver.onGameTick();
-		varbit4772BelladonnaVarbitObserver.onGameTick();
-		varbit4771BushVarbitObserver.onGameTick();
-		varbit4772BushVarbitObserver.onGameTick();
-		varbit4771CactusVarbitObserver.onGameTick();
-		varbit7904CactusVarbitObserver.onGameTick();
-		varbit4771CalquatVarbitObserver.onGameTick();
-		varbit4773CalquatVarbitObserver.onGameTick();
 		inferenceEngine.tick();
 
 		long after = inferenceEngine.getChangeCounter();
@@ -270,18 +166,6 @@ public class FarmutilsPlugin extends Plugin
 			if (farmPanel != null)
 			{
 				farmPanel.rebuild();
-			}
-		}
-
-		// Even when inference outputs are unchanged, progress bars may advance due to time-driven
-		// stage estimates. Repaint at most once per minute (no rebuild).
-		long epochMinute = System.currentTimeMillis() / 60000L;
-		if (epochMinute != lastRepaintEpochMinute)
-		{
-			lastRepaintEpochMinute = epochMinute;
-			if (farmPanel != null)
-			{
-				SwingUtilities.invokeLater(farmPanel::repaint);
 			}
 		}
 	}
@@ -333,22 +217,7 @@ public class FarmutilsPlugin extends Plugin
 
 			// Patch list appearance / scrollbar options
 			case "emphasizeHeaders":
-				case "largerHeadings":
 			case "showPatchCategoryPrefix":
-				case "secondaryTextIndentPx":
-
-				// State + caret colours
-				case "stateColorUnknown":
-				case "stateColorEmpty":
-				case "stateColorGrowing":
-				case "stateColorReady":
-				case "stateColorDiseased":
-				case "stateColorDead":
-				case "expandedCaretMode":
-				case "expandedCaretCustomColor":
-				case "collapsedCaretMode":
-				case "collapsedCaretCustomColor":
-
 			case "scrollbarVisibility":
 			case "scrollbarWidth":
 			case "scrollbarOutlineStyle":

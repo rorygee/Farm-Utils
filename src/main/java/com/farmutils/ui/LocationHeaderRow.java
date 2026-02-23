@@ -37,7 +37,12 @@ public final class LocationHeaderRow extends JPanel
         JLabel label = new JLabel(locationName);
         label.setOpaque(false);
         label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-        label.setFont(UiFont.scaled(label.getFont(), scale * 0.92f, Font.PLAIN));
+        Font f = UiFont.scaled(label.getFont(), scale * 0.92f, Font.PLAIN);
+        if (config != null && config.largerHeadings())
+        {
+            f = f.deriveFont(f.getSize2D() + 1f);
+        }
+        label.setFont(f);
         add(label, BorderLayout.CENTER);
 
         JLabel dragHandle = new JLabel("⋮⋮");

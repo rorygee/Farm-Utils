@@ -313,7 +313,7 @@ public class FarmPanel extends JPanel
                     PatchOrderingResolver.resolveGroupOrder(grouped, uiStateStore);
 
             boolean showIndicator = uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.CLEAN;
-            boolean showLocationHeaders = uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.PATCH_LABEL;
+            boolean showLocationHeaders = true;
 
             // ViewMode: DEFAULT is grouped (current behavior). FLAT is a single list without group headers.
             if (uiStateStore.getPatchListViewMode() == UiStateStore.ViewMode.FLAT)
@@ -380,8 +380,8 @@ public class FarmPanel extends JPanel
                                 itemManager,
                                 config,
                                 showIndicator,
-                                titleSuffixForCleanPatchLabel(id),
-                                secondaryOverrideForSort(id),
+                                null,
+                                null,
                                 this::rebuild);
 						// Record visible order in the exact order rows are rendered.
 						visiblePatchOrder.add(id);
@@ -555,8 +555,8 @@ public class FarmPanel extends JPanel
                                 itemManager,
                                 config,
                                 showIndicator,
-                                titleSuffixForCleanPatchLabel(id),
-                                secondaryOverrideForSort(id),
+                                null,
+                                null,
                                 this::rebuild);
 						// Record visible order in the exact order rows are rendered.
 						visiblePatchOrder.add(id);
@@ -688,6 +688,7 @@ public class FarmPanel extends JPanel
     private enum AggregateState
     {
         DEAD,
+        DISEASED,
         READY,
         GROWING,
         EMPTY,
@@ -726,6 +727,7 @@ public class FarmPanel extends JPanel
 {
         float scale = config.textScale().multiplier();
         boolean emphasize = config.emphasizeHeaders();
+		boolean largerHeadings = config.largerHeadings();
 
         float headerScale = emphasize ? (scale * 1.05f) : scale;
         int style = emphasize ? Font.BOLD : Font.PLAIN;
@@ -734,8 +736,18 @@ public class FarmPanel extends JPanel
 
         JLabel triLabel = new JLabel(tri);
         triLabel.setOpaque(false);
-        triLabel.setForeground(collapsed ? aggregateColor(aggregate) : HEADER_ORANGE);
-        triLabel.setFont(UiFont.scaled(triLabel.getFont(), headerScale, style));
+
+		Color headerBg = ColorScheme.DARKER_GRAY_COLOR;
+		Color expandedCaret = expandedCaretColor();
+		Color collapsedCaret = collapsedCaretColor(aggregate, headerBg);
+		triLabel.setForeground(collapsed ? collapsedCaret : expandedCaret);
+
+		Font triFont = UiFont.scaled(triLabel.getFont(), headerScale, style);
+		if (largerHeadings)
+		{
+			triFont = triFont.deriveFont(triFont.getSize2D() + 1f);
+		}
+		triLabel.setFont(triFont);
 
         int iconSize = UiRowMetrics.iconSize(scale);
         int gapAfterIcon = UiRowMetrics.iconGap(scale);
@@ -747,10 +759,15 @@ public class FarmPanel extends JPanel
         triLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
 
-    JLabel textLabel = new JLabel(groupName);
+	JLabel textLabel = new JLabel(groupName);
         textLabel.setOpaque(false);
         textLabel.setForeground(HEADER_ORANGE);
-        textLabel.setFont(UiFont.scaled(textLabel.getFont(), headerScale, style));
+		Font textFont = UiFont.scaled(textLabel.getFont(), headerScale, style);
+		if (largerHeadings)
+		{
+			textFont = textFont.deriveFont(textFont.getSize2D() + 1f);
+		}
+		textLabel.setFont(textFont);
 
 		boolean groupHidden = uiStateStore != null && uiStateStore.isGroupHidden(groupName);
 		if (showDisabled && groupHidden)
@@ -764,7 +781,7 @@ public class FarmPanel extends JPanel
         JPanel header = new JPanel();
         header.setLayout(new BoxLayout(header, BoxLayout.X_AXIS));
         header.setOpaque(true);
-        header.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		header.setBackground(headerBg);
 
         int padY = Math.max(2, Math.round(PAD_Y * scale));
         int padX = Math.max(6, Math.round(PAD_X * scale));
@@ -916,6 +933,7 @@ public class FarmPanel extends JPanel
     private AggregateState aggregateStateForCollapsedHeader(List<PatchId> visibleIds)
     {
         boolean hasDead = false;
+        boolean hasDiseased = false;
         boolean hasReady = false;
         boolean hasGrowing = false;
         boolean hasEmpty = false;
@@ -939,6 +957,9 @@ public class FarmPanel extends JPanel
                 case DEAD:
                     hasDead = true;
                     break;
+                case DISEASED:
+                    hasDiseased = true;
+                    break;
                 case READY:
                     hasReady = true;
                     break;
@@ -955,6 +976,7 @@ public class FarmPanel extends JPanel
 
         // Explicit precedence (strongest first)
         if (hasDead)    return AggregateState.DEAD;
+        if (hasDiseased) return AggregateState.DISEASED;
         if (hasReady)   return AggregateState.READY;
         if (hasGrowing) return AggregateState.GROWING;
         if (hasEmpty)   return AggregateState.EMPTY;
@@ -962,21 +984,72 @@ public class FarmPanel extends JPanel
         return AggregateState.UNKNOWN;
     }
 
-    private Color aggregateColor(AggregateState aggregate)
+    private Color expandedCaretColor()
     {
+        if (config == null)
+        {
+            return HEADER_ORANGE;
+        }
+
+        FarmutilsConfig.ExpandedCaretMode mode = config.expandedCaretMode();
+        if (mode == FarmutilsConfig.ExpandedCaretMode.CUSTOM)
+        {
+            Color c = config.expandedCaretCustomColor();
+            return (c != null) ? c : HEADER_ORANGE;
+        }
+
+        return HEADER_ORANGE;
+    }
+
+    private Color collapsedCaretColor(AggregateState aggregate, Color headerBackground)
+    {
+        if (config == null)
+        {
+            return TRI_DISABLED;
+        }
+
+        FarmutilsConfig.CollapsedCaretMode mode = config.collapsedCaretMode();
+        switch (mode)
+        {
+            case CUSTOM:
+                Color cc = config.collapsedCaretCustomColor();
+                return (cc != null) ? cc : TRI_DISABLED;
+            case STATE_OVERVIEW:
+                Color base = aggregateToConfiguredStateColor(aggregate);
+                Color hint = UiColors.mutedHint(base, headerBackground);
+                return (hint != null) ? hint : TRI_DISABLED;
+            case GREY:
+            default:
+                return TRI_DISABLED;
+        }
+    }
+
+    private Color aggregateToConfiguredStateColor(AggregateState aggregate)
+    {
+        if (config == null)
+        {
+            return null;
+        }
+        if (aggregate == null)
+        {
+            return config.stateColorUnknown();
+        }
+
         switch (aggregate)
         {
             case DEAD:
-                return new Color(150, 60, 60);
+                return config.stateColorDead();
+            case DISEASED:
+                return config.stateColorDiseased();
             case READY:
-                return new Color(90, 150, 90);
+                return config.stateColorReady();
             case GROWING:
-                return new Color(120, 120, 60);
+                return config.stateColorGrowing();
             case EMPTY:
-                return new Color(100, 100, 100);
+                return config.stateColorEmpty();
             case UNKNOWN:
             default:
-                return TRI_DISABLED;
+                return config.stateColorUnknown();
         }
     }
 
@@ -1220,24 +1293,20 @@ public class FarmPanel extends JPanel
     }
 
     private List<PatchId> applySort(List<PatchId> ids)
-{
-    if (ids == null || ids.size() <= 1)
     {
-        return ids;
-    }
+        if (ids == null || ids.size() <= 1)
+        {
+            return ids;
+        }
 
-    UiStateStore.SortMode mode = uiStateStore.getPatchListSortMode();
+        UiStateStore.SortMode mode = uiStateStore.getPatchListSortMode();
+        if (mode == UiStateStore.SortMode.DEFAULT)
+        {
+            return ids;
+        }
 
-    if (mode == UiStateStore.SortMode.DEFAULT)
-    {
-        return ids;
-    }
-
-    List<PatchId> copy = new ArrayList<>(ids);
-
-    if (mode == UiStateStore.SortMode.ALPHABETICAL)
-    {
-        // Location-block alphabetical (Option A): preserves location header semantics.
+        // ALPHABETICAL: location-block alphabetical; preserves location header semantics.
+        List<PatchId> copy = new ArrayList<>(ids);
         copy.sort(Comparator
                 .comparing((PatchId p) -> safeLower(p.getLocationKey()))
                 .thenComparing(p -> safeLower(p.getLocationName()))
@@ -1246,106 +1315,7 @@ public class FarmPanel extends JPanel
         return copy;
     }
 
-    if (mode == UiStateStore.SortMode.PATCH_LABEL)
-    {
-        // Pure patch-label alphabetical. (Location headers are suppressed while this is active.)
-        copy.sort(Comparator
-                .comparing((PatchId p) -> naturalPlotKey(p.getLabel()))
-                .thenComparing(p -> safeLower(p.getLocationKey()))
-                .thenComparing(p -> safeLower(p.getLocationName()))
-                .thenComparing(Enum::name));
-        return copy;
-    }
-
-    return ids;
-}
-
-    /**
-     * When ViewMode=CLEAN and SortMode=PATCH_LABEL, the secondary line is hidden
-     * but patch labels are often ambiguous ("Plot 1", "Herb patch").
-     * In that one combination only, append a compact location suffix to the title.
-     */
-    private String titleSuffixForCleanPatchLabel(PatchId id)
-    {
-        if (id == null)
-        {
-            return null;
-        }
-
-        if (uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.CLEAN)
-        {
-            return null;
-        }
-
-        if (uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.PATCH_LABEL)
-        {
-            return null;
-        }
-
-        // Exception rule:
-        // In CLEAN + PATCH_LABEL, we append location to disambiguate ambiguous labels.
-        // However, Herb/Flower patches become noisy with a suffix (they are commonly scanned via
-        // their location blocks). Exclude them, except for quest patches (e.g., enriched snapdragon)
-        // where location context is still valuable.
-        String group = id.getGroup();
-        if (!isQuestPatch(id) && group != null && ("Herb".equalsIgnoreCase(group) || "Flower".equalsIgnoreCase(group)))
-        {
-            return null;
-        }
-
-        String loc = id.getLocationName();
-        if (loc == null || loc.isBlank())
-        {
-            loc = id.getLocationKey();
-        }
-
-        if (loc == null || loc.isBlank())
-        {
-            return null;
-        }
-
-        return " · " + loc;
-    }
-
-    private boolean isQuestPatch(PatchId id)
-    {
-        // Best-effort heuristic without expanding the data model.
-        String n = id.name();
-        return n.startsWith("QUEST_") || n.contains("_QUEST_");
-    }
-
-    /**
-     * When sorting by PATCH_LABEL, the primary row label becomes ambiguous (e.g. many "Plot 1").
-     * We reuse the existing secondary line to show location context instead of patch state.
-     */
-    private String secondaryOverrideForSort(PatchId id)
-    {
-        if (uiStateStore.getPatchListSortMode() != UiStateStore.SortMode.PATCH_LABEL)
-        {
-            return null;
-        }
-
-        if (id == null)
-        {
-            return null;
-        }
-
-        String loc = id.getLocationName();
-        if (loc != null && !loc.isBlank())
-        {
-            return loc;
-        }
-
-        String key = id.getLocationKey();
-        if (key != null && !key.isBlank())
-        {
-            return key;
-        }
-
-        return id.getGroup();
-    }
-
-private static String safeLower(String s)
+    private static String safeLower(String s)
     {
         return (s == null) ? "" : s.toLowerCase(Locale.ROOT);
     }

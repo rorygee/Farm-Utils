@@ -12,6 +12,7 @@ import static org.junit.Assert.*;
 public class InferenceEngineTest
 {
     private static final PatchId ID = PatchId.ALLOTMENT_FALADOR_PLOT_1;
+	private static final PatchId HERB = PatchId.HERB_CATHERBY;
 
     private static final class FixedReadyWindowModel implements PatchDurationModel
     {
@@ -180,4 +181,50 @@ public class InferenceEngineTest
         assertEquals(InferredStage.READY, after.getStage());
         assertTrue(after.getReasons().contains(ReasonCode.DERIVED_FROM_TIME));
     }
+
+	@Test
+	public void diseasedDoesNotStickAcrossCycleBoundaries()
+	{
+		Instant t0 = Instant.parse("2026-01-01T12:00:00Z");
+		FixedPatchClock clock = new FixedPatchClock(t0);
+		InferenceEngine engine = new InferenceEngine(clock, new FarmDurationModelV0());
+
+		engine.onObservation(Observation.diseasedSet(HERB, t0, ObservationSource.VARBIT));
+		assertEquals(InferredStage.DISEASED, engine.get(HERB).getStage());
+
+		// Clear to empty (cycle boundary).
+		Instant emptyAt = t0.plusSeconds(10);
+		engine.onObservation(Observation.harvested(HERB, emptyAt, ObservationSource.VARBIT));
+		assertEquals(InferredStage.EMPTY, engine.get(HERB).getStage());
+
+		// Planting begins a new cycle; diseased must not persist.
+		Instant plantedAt = t0.plusSeconds(20);
+		engine.onObservation(Observation.planted(HERB, plantedAt, ObservationSource.VARBIT));
+		assertEquals(InferredStage.GROWING, engine.get(HERB).getStage());
+
+		// Stage observations should also keep the cycle clean.
+		engine.onObservation(Observation.growthStageObserved(HERB, 1, plantedAt.plusSeconds(5), ObservationSource.VARBIT));
+		assertTrue(engine.get(HERB).getStage() != InferredStage.DISEASED);
+	}
+
+	@Test
+	public void growthProgressAdvancesConservativelyOverTime()
+	{
+		Instant t0 = Instant.parse("2026-01-01T12:00:00Z");
+		FixedPatchClock clock = new FixedPatchClock(t0);
+		InferenceEngine engine = new InferenceEngine(clock, new FarmDurationModelV0());
+
+		engine.onObservation(Observation.growthStageObserved(HERB, 1, t0, ObservationSource.VARBIT));
+		assertTrue(engine.getGrowthProgress(HERB).isPresent());
+		GrowthProgress p0 = engine.getGrowthProgress(HERB).get();
+		assertEquals(1, p0.getStageCurrent());
+		assertEquals(5, p0.getStageMax());
+		assertEquals(0.0f, p0.getProgress01(), 0.0001f);
+
+		// After 40 minutes (2 stage durations), estimate stage 3.
+		clock.setNow(t0.plus(Duration.ofMinutes(40)));
+		GrowthProgress p1 = engine.getGrowthProgress(HERB).get();
+		assertEquals(3, p1.getStageCurrent());
+		assertEquals(0.5f, p1.getProgress01(), 0.0001f);
+	}
 }

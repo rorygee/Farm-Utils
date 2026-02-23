@@ -80,7 +80,7 @@ public class UiStateStore
 		CLEAN
 	}
 
-	/**
+		/**
 	 * Sort mode for the patches list.
 	 *
 	 * DEFAULT: respects user drag order (stored in UiStateStore ordering).
@@ -89,9 +89,9 @@ public class UiStateStore
 	public enum SortMode
 	{
 		DEFAULT,
-		ALPHABETICAL,
-		PATCH_LABEL
+		ALPHABETICAL
 	}
+
 
 	/**
 	 * Controls how patch state is indicated on each row.

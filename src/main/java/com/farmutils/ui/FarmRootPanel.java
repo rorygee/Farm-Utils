@@ -585,7 +585,7 @@ public class FarmRootPanel extends PluginPanel
             farmPanel.rebuild();
         });
 
-        // Now that reorderTgl exists, wire view cycling so we can keep toggle state in sync.
+        // Now that reorderTgl exists, wire view + sort cycling so we can keep toggle state in sync.
         viewBtn.addActionListener(e ->
         {
             if (uiStateStore == null)
@@ -611,11 +611,17 @@ public class FarmRootPanel extends PluginPanel
 
             uiStateStore.setPatchListViewMode(next);
 
-            // Enforce gating in the UI immediately.
+            // Enforce contracts in the UI immediately.
             boolean canReorder = uiStateStore.getPatchListSortMode() == UiStateStore.SortMode.DEFAULT
                     && uiStateStore.getPatchListViewMode() != UiStateStore.ViewMode.FLAT;
             reorderTgl.setEnabled(canReorder);
-            reorderTgl.setSelected(uiStateStore.isReorderModeEnabled());
+            if (!canReorder)
+            {
+                reorderTgl.setSelected(false);
+            }
+
+            // Collapse availability depends on current view.
+            refreshCollapseAll.run();
 
             farmPanel.rebuild();
         });
@@ -628,20 +634,9 @@ public class FarmRootPanel extends PluginPanel
             }
 
             UiStateStore.SortMode cur = uiStateStore.getPatchListSortMode();
-            UiStateStore.SortMode next;
-
-            switch (cur)
-            {
-                case DEFAULT:
-                    next = UiStateStore.SortMode.ALPHABETICAL;
-                    break;
-                case ALPHABETICAL:
-                    next = UiStateStore.SortMode.PATCH_LABEL;
-                    break;
-                default:
-                    next = UiStateStore.SortMode.DEFAULT;
-                    break;
-            }
+            UiStateStore.SortMode next = (cur == UiStateStore.SortMode.DEFAULT)
+                    ? UiStateStore.SortMode.ALPHABETICAL
+                    : UiStateStore.SortMode.DEFAULT;
 
             uiStateStore.setPatchListSortMode(next);
 

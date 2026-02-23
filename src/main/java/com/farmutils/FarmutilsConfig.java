@@ -4,8 +4,11 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 import com.farmutils.config.NavContent;
 import com.farmutils.config.NavColumns;
+
+import java.awt.Color;
 
 
 
@@ -49,6 +52,13 @@ public interface FarmutilsConfig extends Config
             position = 90
     )
     String appearanceSection = "appearance";
+
+    @ConfigSection(
+            name = "Colours",
+            description = "State, caret, and progress colours",
+            position = 91
+    )
+    String coloursSection = "colours";
 
     @ConfigItem(
             keyName = "navContent",
@@ -108,6 +118,43 @@ public interface FarmutilsConfig extends Config
         return false;
     }
 
+    @ConfigItem(
+            keyName = "largerHeadings",
+            name = "Larger headings",
+            description = "Slightly increase font size for group headings and subheadings.",
+            position = 4,
+            section = appearanceSection
+    )
+    default boolean largerHeadings()
+    {
+        return false;
+    }
+
+    @Range(min = 0, max = 20)
+    @ConfigItem(
+            keyName = "secondaryTextIndentPx",
+            name = "Secondary text indent (px)",
+            description = "Indent the secondary (2nd/3rd) line relative to the patch name.",
+            position = 6,
+            section = appearanceSection
+    )
+    default int secondaryTextIndentPx()
+    {
+        return 0;
+    }
+
+    @ConfigItem(
+            keyName = "conservativeTimeEstimates",
+            name = "Conservative time estimates",
+            description = "When showing estimated completion times, prefer the latest (worst-case) bound.",
+            position = 7,
+            section = appearanceSection
+    )
+    default boolean conservativeTimeEstimates()
+    {
+        return true;
+    }
+
     enum SelectionOutlineColor
     {
         WHITE,
@@ -124,6 +171,143 @@ public interface FarmutilsConfig extends Config
     default SelectionOutlineColor selectionOutlineColor()
     {
         return SelectionOutlineColor.WHITE;
+    }
+
+    // --- State colours (used for state text + indicator line) ---
+
+    @ConfigItem(
+            keyName = "stateColorUnknown",
+            name = "State: Unknown",
+            description = "Colour used for Unknown state text/indicators.",
+            position = 1,
+            section = coloursSection
+    )
+    default Color stateColorUnknown()
+    {
+        return new Color(150, 150, 150);
+    }
+
+    @ConfigItem(
+            keyName = "stateColorEmpty",
+            name = "State: Empty",
+            description = "Colour used for Empty state text/indicators.",
+            position = 2,
+            section = coloursSection
+    )
+    default Color stateColorEmpty()
+    {
+        return new Color(170, 170, 170);
+    }
+
+    @ConfigItem(
+            keyName = "stateColorGrowing",
+            name = "State: Growing",
+            description = "Colour used for Growing state text/indicators.",
+            position = 3,
+            section = coloursSection
+    )
+    default Color stateColorGrowing()
+    {
+        return new Color(110, 150, 210);
+    }
+
+    @ConfigItem(
+            keyName = "stateColorReady",
+            name = "State: Ready",
+            description = "Colour used for Ready state text/indicators.",
+            position = 4,
+            section = coloursSection
+    )
+    default Color stateColorReady()
+    {
+        return new Color(90, 170, 110);
+    }
+
+    @ConfigItem(
+            keyName = "stateColorDiseased",
+            name = "State: Diseased",
+            description = "Colour used for Diseased state text/indicators.",
+            position = 5,
+            section = coloursSection
+    )
+    default Color stateColorDiseased()
+    {
+        return new Color(190, 150, 70);
+    }
+
+    @ConfigItem(
+            keyName = "stateColorDead",
+            name = "State: Dead",
+            description = "Colour used for Dead state text/indicators.",
+            position = 6,
+            section = coloursSection
+    )
+    default Color stateColorDead()
+    {
+        return new Color(200, 90, 90);
+    }
+
+    // --- Caret colouring ---
+
+    enum ExpandedCaretMode
+    {
+        ACCENT,
+        CUSTOM
+    }
+
+    enum CollapsedCaretMode
+    {
+        GREY,
+        STATE_OVERVIEW,
+        CUSTOM
+    }
+
+    @ConfigItem(
+            keyName = "expandedCaretMode",
+            name = "Expanded caret",
+            description = "Colour mode for the expanded group caret.",
+            position = 10,
+            section = coloursSection
+    )
+    default ExpandedCaretMode expandedCaretMode()
+    {
+        return ExpandedCaretMode.ACCENT;
+    }
+
+    @ConfigItem(
+            keyName = "expandedCaretCustomColor",
+            name = "Expanded caret custom colour",
+            description = "Custom colour used when Expanded caret mode is CUSTOM.",
+            position = 11,
+            section = coloursSection
+    )
+    default Color expandedCaretCustomColor()
+    {
+        return new Color(255, 152, 31);
+    }
+
+    @ConfigItem(
+            keyName = "collapsedCaretMode",
+            name = "Collapsed caret",
+            description = "Colour mode for the collapsed group caret.",
+            position = 12,
+            section = coloursSection
+    )
+    default CollapsedCaretMode collapsedCaretMode()
+    {
+        return CollapsedCaretMode.GREY;
+    }
+
+    @ConfigItem(
+            keyName = "collapsedCaretCustomColor",
+            name = "Collapsed caret custom colour",
+            description = "Custom colour used when Collapsed caret mode is CUSTOM.",
+            position = 13,
+            section = coloursSection
+    )
+    default Color collapsedCaretCustomColor()
+    {
+        return new Color(130, 130, 130);
     }
 
     @ConfigItem(

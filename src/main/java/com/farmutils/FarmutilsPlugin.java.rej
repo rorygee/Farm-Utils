@@ -1,0 +1,19 @@
+--- src/main/java/com/farmutils/FarmutilsPlugin.java	2026-02-21 01:33:28.617645686 +0000
++++ src/main/java/com/farmutils/FarmutilsPlugin.java	2026-02-21 01:33:28.625652540 +0000
+@@ -159,6 +165,16 @@
+ 		varbit4774HerbVarbitObserver.onGameTick();
+ 		varbit4775HerbVarbitObserver.onGameTick();
+ 		inferenceEngine.tick();
++
++		long afterCounter = inferenceEngine != null ? inferenceEngine.getChangeCounter() : -1;
++		if (afterCounter != beforeCounter && afterCounter != lastInferenceChangeCounter)
++		{
++			lastInferenceChangeCounter = afterCounter;
++			if (farmPanel != null)
++			{
++				farmPanel.repaint();
++			}
++		}
+ 	}
+ 
+ 	@Subscribe

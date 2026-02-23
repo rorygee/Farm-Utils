@@ -8,11 +8,9 @@ import com.farmutils.FarmutilsConfig;
 import com.farmutils.infer.InferenceEngine;
 import com.farmutils.infer.InferredStage;
 import com.farmutils.infer.PatchInference;
-import com.farmutils.infer.GrowthProgress;
 import com.farmutils.infer.Observation;
 import com.farmutils.infer.ObservationSource;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Map;
 import java.util.HashMap;
 import javax.inject.Inject;
@@ -171,56 +169,6 @@ public class PatchStore
 
         // v0: feed inference engine via existing manual/debug interactions.
         inferenceEngine.onObservation(Observation.patchStateCleared(id, Instant.ofEpochMilli(now), ObservationSource.MANUAL_DEBUG));
-    }
-
-    /**
-     * Paint-only helper: best-effort growth progress snapshot, when available.
-     *
-     * <p>Delegates to the headless inference engine; no persistence.</p>
-     */
-    public Optional<GrowthProgress> getGrowthProgress(PatchId id)
-    {
-        if (id == null)
-        {
-            return Optional.empty();
-        }
-        return inferenceEngine.getGrowthProgress(id);
-    }
-
-
-    /** Runtime-only: direct access to the current inference output, when present. */
-    public Optional<PatchInference> getInference(PatchId id)
-    {
-        if (id == null)
-        {
-            return Optional.empty();
-        }
-        PatchInference inf = inferenceEngine.get(id);
-        if (inf == null)
-        {
-            return Optional.empty();
-        }
-        return Optional.of(inf);
-    }
-
-    /** Runtime-only: crop icon item id for a patch (falls back to empty when unknown). */
-    public OptionalInt getCropItemId(PatchId id)
-    {
-        if (id == null)
-        {
-            return OptionalInt.empty();
-        }
-        return inferenceEngine.getCropItemId(id);
-    }
-
-    /** Runtime-only: crop display name for a patch. */
-    public Optional<String> getCropName(PatchId id)
-    {
-        if (id == null)
-        {
-            return Optional.empty();
-        }
-        return inferenceEngine.getCropName(id);
     }
 
 
