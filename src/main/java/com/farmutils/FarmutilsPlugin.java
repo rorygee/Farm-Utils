@@ -10,6 +10,9 @@ import com.farmutils.observe.Varbit4771BelladonnaVarbitObserver;
 import com.farmutils.observe.Varbit4771BushVarbitObserver;
 import com.farmutils.observe.Varbit4771CactusVarbitObserver;
 import com.farmutils.observe.Varbit4771CalquatVarbitObserver;
+import com.farmutils.observe.Varbit4771CoralVarbitObserver;
+import com.farmutils.observe.Varbit4771HopsVarbitObserver;
+import com.farmutils.observe.Varbit4772CoralVarbitObserver;
 import com.farmutils.observe.Varbit4772BelladonnaVarbitObserver;
 import com.farmutils.observe.Varbit4772BushVarbitObserver;
 import com.farmutils.observe.Varbit4773CalquatVarbitObserver;
@@ -106,6 +109,15 @@ public class FarmutilsPlugin extends Plugin
 	private Varbit4771CalquatVarbitObserver varbit4771CalquatVarbitObserver;
 
 	@Inject
+	private Varbit4771HopsVarbitObserver varbit4771HopsVarbitObserver;
+
+	@Inject
+	private Varbit4771CoralVarbitObserver varbit4771CoralVarbitObserver;
+
+	@Inject
+	private Varbit4772CoralVarbitObserver varbit4772CoralVarbitObserver;
+
+	@Inject
 	private Varbit4772BelladonnaVarbitObserver varbit4772BelladonnaVarbitObserver;
 
 	@Inject
@@ -199,6 +211,9 @@ public class FarmutilsPlugin extends Plugin
 			varbit4771CactusVarbitObserver.reset();
 			varbit7904CactusVarbitObserver.reset();
 			varbit4771CalquatVarbitObserver.reset();
+			varbit4771HopsVarbitObserver.reset();
+			varbit4771CoralVarbitObserver.reset();
+			varbit4772CoralVarbitObserver.reset();
 			varbit4773CalquatVarbitObserver.reset();
 		}
 	}
@@ -237,6 +252,9 @@ public class FarmutilsPlugin extends Plugin
 				varbit4771CactusVarbitObserver.reset();
 				varbit7904CactusVarbitObserver.reset();
 				varbit4771CalquatVarbitObserver.reset();
+				varbit4771HopsVarbitObserver.reset();
+				varbit4771CoralVarbitObserver.reset();
+				varbit4772CoralVarbitObserver.reset();
 				varbit4773CalquatVarbitObserver.reset();
 			}
 		}
@@ -260,6 +278,9 @@ public class FarmutilsPlugin extends Plugin
 		varbit4771CactusVarbitObserver.onGameTick();
 		varbit7904CactusVarbitObserver.onGameTick();
 		varbit4771CalquatVarbitObserver.onGameTick();
+		varbit4771HopsVarbitObserver.onGameTick();
+		varbit4771CoralVarbitObserver.onGameTick();
+		varbit4772CoralVarbitObserver.onGameTick();
 		varbit4773CalquatVarbitObserver.onGameTick();
 		inferenceEngine.tick();
 
