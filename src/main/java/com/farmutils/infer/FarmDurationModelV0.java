@@ -21,6 +21,17 @@ public class FarmDurationModelV0 implements PatchDurationModel
     private static final Duration FLOWER_CYCLE = Duration.ofMinutes(5);
     private static final Duration ALLOTMENT_CYCLE = Duration.ofMinutes(10);
 
+    // Quest patches (bespoke): explicit per-stage durations to allow time-based projection
+    // even when varbit stage transitions are sparse.
+    private static final Duration QUEST_UNFERTH_CYCLE = Duration.ofMinutes(5);
+    private static final Duration QUEST_KELDA_HOPS_CYCLE = Duration.ofMinutes(5);
+    private static final Duration QUEST_ELDER_CADANTINE_CYCLE = Duration.ofMinutes(20);
+
+    // Exact completion windows as supplied by the user (no tick-alignment uncertainty modeled).
+    private static final ReadyWindow QUEST_UNFERTH_WINDOW = new ReadyWindow(Duration.ofMinutes(25), Duration.ofMinutes(25));
+    private static final ReadyWindow QUEST_KELDA_HOPS_WINDOW = new ReadyWindow(Duration.ofMinutes(20), Duration.ofMinutes(20));
+    private static final ReadyWindow QUEST_ELDER_CADANTINE_WINDOW = new ReadyWindow(Duration.ofMinutes(80), Duration.ofMinutes(80));
+
     // Herbs: conservatively 5 cycles (100 minutes) from planting, where the first natural growth
     // tick occurs on the NEXT cadence boundary (up to +20m after planting).
     // That yields a durable window:
@@ -67,6 +78,20 @@ public class FarmDurationModelV0 implements PatchDurationModel
             // Flower decoder stages: 1..4 growing, 5 ready.
             return OptionalInt.of(5);
         }
+
+        // Quest patches: provide explicit stage caps so planted-only inference can project.
+        if (patchId == PatchId.QUEST_UNFERTHS_PATCH)
+        {
+            return OptionalInt.of(5);
+        }
+        if (patchId == PatchId.QUEST_KELDA_HOPS)
+        {
+            return OptionalInt.of(5);
+        }
+        if (patchId == PatchId.QUEST_ELDER_CADANTINE)
+        {
+            return OptionalInt.of(4);
+        }
         return OptionalInt.empty();
     }
 
@@ -86,6 +111,20 @@ public class FarmDurationModelV0 implements PatchDurationModel
             // Allotments advance on the standard 10-minute farming tick.
             return Optional.of(ALLOTMENT_CYCLE);
         }
+
+        // Quest patches: fixed per-stage durations.
+        if (patchId == PatchId.QUEST_UNFERTHS_PATCH)
+        {
+            return Optional.of(QUEST_UNFERTH_CYCLE);
+        }
+        if (patchId == PatchId.QUEST_KELDA_HOPS)
+        {
+            return Optional.of(QUEST_KELDA_HOPS_CYCLE);
+        }
+        if (patchId == PatchId.QUEST_ELDER_CADANTINE)
+        {
+            return Optional.of(QUEST_ELDER_CADANTINE_CYCLE);
+        }
         return Optional.empty();
     }
 
@@ -96,6 +135,10 @@ public class FarmDurationModelV0 implements PatchDurationModel
         {
             // Standard herb patch transform table has 3 harvestable variants (full -> fewer picks).
             return OptionalInt.of(3);
+        }
+        if (patchId == PatchId.SPECIAL_TREE_CELASTRUS_FARMING_GUILD)
+        {
+            return OptionalInt.of(4);
         }
         return OptionalInt.empty();
     }
@@ -116,6 +159,19 @@ public class FarmDurationModelV0 implements PatchDurationModel
         if (isFlowerPatch(patchId))
         {
             return Optional.of(FLOWER_WINDOW);
+        }
+
+        if (patchId == PatchId.QUEST_UNFERTHS_PATCH)
+        {
+            return Optional.of(QUEST_UNFERTH_WINDOW);
+        }
+        if (patchId == PatchId.QUEST_KELDA_HOPS)
+        {
+            return Optional.of(QUEST_KELDA_HOPS_WINDOW);
+        }
+        if (patchId == PatchId.QUEST_ELDER_CADANTINE)
+        {
+            return Optional.of(QUEST_ELDER_CADANTINE_WINDOW);
         }
         return Optional.empty();
     }

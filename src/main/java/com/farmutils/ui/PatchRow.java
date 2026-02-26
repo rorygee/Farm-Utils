@@ -309,35 +309,8 @@ public class PatchRow extends JPanel
         // Apply state-text coloring for the modes that are meant to do so.
         applyIndicatorColorFromMode();
 
-        // State indicator click: cycle patch state.
-        // Unifies with the modifier-based batching semantics used by the swatch:
-        // - Normal click affects only the clicked patch.
-        // - Ctrl/Shift click, when a multi-selection exists and the clicked patch is selected,
-        //   sets all selected patches to the same resulting state.
-        indicator.addMouseListener(new MouseAdapter()
-        {
-            @Override
-            public void mousePressed(MouseEvent e)
-            {
-                if (!SwingUtilities.isLeftMouseButton(e) || e.isPopupTrigger())
-                {
-                    return;
-                }
-
-                // Modifier batching is opt-in to avoid accidental mass edits.
-                boolean batch = (e.isControlDown() || e.isShiftDown());
-                Set<PatchId> targets = (batch ? getActionTargetPatchIds() : Set.of(patchId));
-
-                PatchState next = nextState(store.view(patchId).getRecord().map(PatchRecord::getState).orElse(null));
-                for (PatchId pid : targets)
-                {
-                    store.save(pid, next);
-                }
-                onChange.run();
-                e.consume();
-            }
-        });
-
+        // Patch state manual overrides are only available via the context menu ("Set: …").
+        // The indicator label participates in row selection via installSelectionAndContextHandlers().
 		// If this patch is hidden (but currently visible due to the toggle), reduce emphasis.
 		if (hiddenVisible)
 		{

@@ -12,11 +12,19 @@ import com.farmutils.observe.Varbit4771CactusVarbitObserver;
 import com.farmutils.observe.Varbit4771CalquatVarbitObserver;
 import com.farmutils.observe.Varbit4771CoralVarbitObserver;
 import com.farmutils.observe.Varbit4771HopsVarbitObserver;
+import com.farmutils.observe.Varbit4771MushroomVarbitObserver;
+import com.farmutils.observe.Varbit4771SeaweedVarbitObserver;
+import com.farmutils.observe.Varbit4771TreeVarbitObserver;
+import com.farmutils.observe.Varbit4771FruitTreeVarbitObserver;
 import com.farmutils.observe.Varbit4772CoralVarbitObserver;
 import com.farmutils.observe.Varbit4772BelladonnaVarbitObserver;
 import com.farmutils.observe.Varbit4772BushVarbitObserver;
+import com.farmutils.observe.Varbit4772SeaweedVarbitObserver;
+import com.farmutils.observe.Varbit4772FruitTreeVarbitObserver;
 import com.farmutils.observe.Varbit4773CalquatVarbitObserver;
+import com.farmutils.observe.Varbit4953GrapesVarbitObserver;
 import com.farmutils.observe.Varbit7904CactusVarbitObserver;
+import com.farmutils.observe.Varbit7905TreeVarbitObserver;
 import com.farmutils.observe.Varbit4771HerbVarbitObserver;
 import com.farmutils.observe.Varbit4772AllotmentVarbitObserver;
 import com.farmutils.observe.Varbit4773AllotmentVarbitObserver;
@@ -25,6 +33,23 @@ import com.farmutils.observe.Varbit4774AllotmentVarbitObserver;
 import com.farmutils.observe.Varbit4774HerbVarbitObserver;
 import com.farmutils.observe.Varbit4775HerbVarbitObserver;
 import com.farmutils.observe.Varbit7906FlowerVarbitObserver;
+import com.farmutils.observe.Varbit7908HesporiVarbitObserver;
+import com.farmutils.observe.Varbit7909FruitTreeVarbitObserver;
+import com.farmutils.observe.Varbit7911AnimaVarbitObserver;
+import com.farmutils.observe.Varbit4771HardwoodVarbitObserver;
+import com.farmutils.observe.Varbit4772HardwoodVarbitObserver;
+import com.farmutils.observe.Varbit4773HardwoodVarbitObserver;
+import com.farmutils.observe.Varbit4771SpiritTreeVarbitObserver;
+import com.farmutils.observe.Varbit4772SpiritTreeVarbitObserver;
+import com.farmutils.observe.Varbit7904SpiritTreeVarbitObserver;
+import com.farmutils.observe.Varbit4775CrystalTreeVarbitObserver;
+import com.farmutils.observe.Varbit7910CelastrusVarbitObserver;
+import com.farmutils.observe.Varbit7907RedwoodVarbitObserver;
+import com.farmutils.observe.Varbit1033UnferthsPatchVarbitObserver;
+import com.farmutils.observe.Varbit3714MagicBeansVarbitObserver;
+import com.farmutils.observe.Varbit823KeldaHopsVarbitObserver;
+import com.farmutils.observe.Varbit9016ElderCadantineVarbitObserver;
+import com.farmutils.observe.Varbit10781EnrichedSnapdragonVarbitObserver;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -115,6 +140,33 @@ public class FarmutilsPlugin extends Plugin
 	private Varbit4771CoralVarbitObserver varbit4771CoralVarbitObserver;
 
 	@Inject
+	private Varbit4771SeaweedVarbitObserver varbit4771SeaweedVarbitObserver;
+
+	@Inject
+	private Varbit4772SeaweedVarbitObserver varbit4772SeaweedVarbitObserver;
+
+	@Inject
+	private Varbit4771MushroomVarbitObserver varbit4771MushroomVarbitObserver;
+
+	@Inject
+	private Varbit4771TreeVarbitObserver varbit4771TreeVarbitObserver;
+
+	@Inject
+	private Varbit7905TreeVarbitObserver varbit7905TreeVarbitObserver;
+
+	@Inject
+	private Varbit4771FruitTreeVarbitObserver varbit4771FruitTreeVarbitObserver;
+
+	@Inject
+	private Varbit4772FruitTreeVarbitObserver varbit4772FruitTreeVarbitObserver;
+
+	@Inject
+	private Varbit7909FruitTreeVarbitObserver varbit7909FruitTreeVarbitObserver;
+
+	@Inject
+	private Varbit4953GrapesVarbitObserver varbit4953GrapesVarbitObserver;
+
+	@Inject
 	private Varbit4772CoralVarbitObserver varbit4772CoralVarbitObserver;
 
 	@Inject
@@ -149,6 +201,64 @@ public class FarmutilsPlugin extends Plugin
 
 	@Inject
 	private Varbit7906FlowerVarbitObserver varbit7906FlowerVarbitObserver;
+
+	@Inject
+	private Varbit7908HesporiVarbitObserver varbit7908HesporiVarbitObserver;
+
+	@Inject
+	private Varbit7911AnimaVarbitObserver varbit7911AnimaVarbitObserver;
+
+	
+	@Inject
+	private Varbit4771HardwoodVarbitObserver varbit4771HardwoodVarbitObserver;
+
+	
+	@Inject
+	private Varbit4772HardwoodVarbitObserver varbit4772HardwoodVarbitObserver;
+
+	
+	@Inject
+	private Varbit4773HardwoodVarbitObserver varbit4773HardwoodVarbitObserver;
+
+	
+	@Inject
+	private Varbit4771SpiritTreeVarbitObserver varbit4771SpiritTreeVarbitObserver;
+
+	
+	@Inject
+	private Varbit4772SpiritTreeVarbitObserver varbit4772SpiritTreeVarbitObserver;
+
+	
+	@Inject
+	private Varbit7904SpiritTreeVarbitObserver varbit7904SpiritTreeVarbitObserver;
+
+	
+	@Inject
+	private Varbit4775CrystalTreeVarbitObserver varbit4775CrystalTreeVarbitObserver;
+
+	
+	@Inject
+	private Varbit7910CelastrusVarbitObserver varbit7910CelastrusVarbitObserver;
+
+	
+	@Inject
+	private Varbit7907RedwoodVarbitObserver varbit7907RedwoodVarbitObserver;
+
+	// --- Quest patch observers ---
+	@Inject
+	private Varbit1033UnferthsPatchVarbitObserver varbit1033UnferthsPatchVarbitObserver;
+
+	@Inject
+	private Varbit3714MagicBeansVarbitObserver varbit3714MagicBeansVarbitObserver;
+
+	@Inject
+	private Varbit823KeldaHopsVarbitObserver varbit823KeldaHopsVarbitObserver;
+
+	@Inject
+	private Varbit9016ElderCadantineVarbitObserver varbit9016ElderCadantineVarbitObserver;
+
+	@Inject
+	private Varbit10781EnrichedSnapdragonVarbitObserver varbit10781EnrichedSnapdragonVarbitObserver;
 
 	@Override
 	protected void startUp()
@@ -215,6 +325,31 @@ public class FarmutilsPlugin extends Plugin
 			varbit4771CoralVarbitObserver.reset();
 			varbit4772CoralVarbitObserver.reset();
 			varbit4773CalquatVarbitObserver.reset();
+			varbit4771SeaweedVarbitObserver.reset();
+			varbit4772SeaweedVarbitObserver.reset();
+			varbit4771MushroomVarbitObserver.reset();
+			varbit4771TreeVarbitObserver.reset();
+			varbit7905TreeVarbitObserver.reset();
+			varbit4771FruitTreeVarbitObserver.reset();
+			varbit4772FruitTreeVarbitObserver.reset();
+			varbit7909FruitTreeVarbitObserver.reset();
+			varbit4953GrapesVarbitObserver.reset();
+			varbit7908HesporiVarbitObserver.reset();
+			varbit7911AnimaVarbitObserver.reset();
+			varbit4771HardwoodVarbitObserver.reset();
+			varbit4772HardwoodVarbitObserver.reset();
+			varbit4773HardwoodVarbitObserver.reset();
+			varbit4771SpiritTreeVarbitObserver.reset();
+			varbit4772SpiritTreeVarbitObserver.reset();
+			varbit7904SpiritTreeVarbitObserver.reset();
+			varbit4775CrystalTreeVarbitObserver.reset();
+			varbit7910CelastrusVarbitObserver.reset();
+			varbit7907RedwoodVarbitObserver.reset();
+			varbit1033UnferthsPatchVarbitObserver.reset();
+			varbit3714MagicBeansVarbitObserver.reset();
+			varbit823KeldaHopsVarbitObserver.reset();
+			varbit9016ElderCadantineVarbitObserver.reset();
+			varbit10781EnrichedSnapdragonVarbitObserver.reset();
 		}
 	}
 
@@ -256,6 +391,31 @@ public class FarmutilsPlugin extends Plugin
 				varbit4771CoralVarbitObserver.reset();
 				varbit4772CoralVarbitObserver.reset();
 				varbit4773CalquatVarbitObserver.reset();
+				varbit4771SeaweedVarbitObserver.reset();
+				varbit4772SeaweedVarbitObserver.reset();
+				varbit4771MushroomVarbitObserver.reset();
+				varbit4771TreeVarbitObserver.reset();
+				varbit7905TreeVarbitObserver.reset();
+				varbit4771FruitTreeVarbitObserver.reset();
+				varbit4772FruitTreeVarbitObserver.reset();
+				varbit7909FruitTreeVarbitObserver.reset();
+				varbit4953GrapesVarbitObserver.reset();
+				varbit7908HesporiVarbitObserver.reset();
+				varbit7911AnimaVarbitObserver.reset();
+				varbit4771HardwoodVarbitObserver.reset();
+				varbit4772HardwoodVarbitObserver.reset();
+				varbit4773HardwoodVarbitObserver.reset();
+				varbit4771SpiritTreeVarbitObserver.reset();
+				varbit4772SpiritTreeVarbitObserver.reset();
+				varbit7904SpiritTreeVarbitObserver.reset();
+				varbit4775CrystalTreeVarbitObserver.reset();
+				varbit7910CelastrusVarbitObserver.reset();
+				varbit7907RedwoodVarbitObserver.reset();
+				varbit1033UnferthsPatchVarbitObserver.reset();
+				varbit3714MagicBeansVarbitObserver.reset();
+				varbit823KeldaHopsVarbitObserver.reset();
+				varbit9016ElderCadantineVarbitObserver.reset();
+				varbit10781EnrichedSnapdragonVarbitObserver.reset();
 			}
 		}
 
@@ -282,6 +442,31 @@ public class FarmutilsPlugin extends Plugin
 		varbit4771CoralVarbitObserver.onGameTick();
 		varbit4772CoralVarbitObserver.onGameTick();
 		varbit4773CalquatVarbitObserver.onGameTick();
+		varbit4771SeaweedVarbitObserver.onGameTick();
+		varbit4772SeaweedVarbitObserver.onGameTick();
+		varbit4771MushroomVarbitObserver.onGameTick();
+		varbit4771TreeVarbitObserver.onGameTick();
+		varbit7905TreeVarbitObserver.onGameTick();
+		varbit4771FruitTreeVarbitObserver.onGameTick();
+		varbit4772FruitTreeVarbitObserver.onGameTick();
+		varbit7909FruitTreeVarbitObserver.onGameTick();
+		varbit4953GrapesVarbitObserver.onGameTick();
+		varbit7908HesporiVarbitObserver.onGameTick();
+		varbit7911AnimaVarbitObserver.onGameTick();
+		varbit4771HardwoodVarbitObserver.onGameTick();
+		varbit4772HardwoodVarbitObserver.onGameTick();
+		varbit4773HardwoodVarbitObserver.onGameTick();
+		varbit4771SpiritTreeVarbitObserver.onGameTick();
+		varbit4772SpiritTreeVarbitObserver.onGameTick();
+		varbit7904SpiritTreeVarbitObserver.onGameTick();
+		varbit4775CrystalTreeVarbitObserver.onGameTick();
+		varbit7910CelastrusVarbitObserver.onGameTick();
+		varbit7907RedwoodVarbitObserver.onGameTick();
+		varbit1033UnferthsPatchVarbitObserver.onGameTick();
+		varbit3714MagicBeansVarbitObserver.onGameTick();
+		varbit823KeldaHopsVarbitObserver.onGameTick();
+		varbit9016ElderCadantineVarbitObserver.onGameTick();
+		varbit10781EnrichedSnapdragonVarbitObserver.onGameTick();
 		inferenceEngine.tick();
 
 		long after = inferenceEngine.getChangeCounter();
@@ -376,6 +561,7 @@ public class FarmutilsPlugin extends Plugin
 			case "scrollbarColor":
 			case "showScrollButtons":
 			case "scrollbarWellBackground":
+			case "indentSingleLocationRows":
 				if (farmPanel != null)
 				{
 					farmPanel.refreshUiFromConfig();

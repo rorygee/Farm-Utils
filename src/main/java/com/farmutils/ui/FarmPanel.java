@@ -393,7 +393,11 @@ public class FarmPanel extends JPanel
                         rowWrap.putClientProperty(PROP_PATCH_ID, id);
                         rowWrap.putClientProperty(PROP_LOCATION_KEY, locationKey);
 
-                        if (isMultiSlot)
+                        // Indent child rows under a location header. Optionally, also indent single-row patches
+                        // so they align with child rows even when no location header is rendered.
+                        boolean indentRow = (isMultiSlot || forceLocationHeader) ||
+                                (showLocationHeaders && config != null && config.indentSingleLocationRows());
+                        if (indentRow)
                         {
                             int indent = Math.max(8, Math.round(10 * config.textScale().multiplier()));
                             rowWrap.setBorder(BorderFactory.createEmptyBorder(0, indent, 0, 0));
@@ -582,9 +586,14 @@ public class FarmPanel extends JPanel
                                 patchDrag.bindRow((JComponent) rh, rowWrap, entriesPanel, groupName, visibleIds);
                             }
                         }
-                        if (isMultiSlot)
+                        // Indent child rows under a location header. Optionally, also indent single-row patches
+                        // so they align with child rows even when no location header is rendered.
+                        boolean indentRow = (isMultiSlot || forceLocationHeader) ||
+                                (showLocationHeaders && config != null && config.indentSingleLocationRows());
+                        if (indentRow)
                         {
-                            // Subtle indent under a location header. Wrapper is used to preserve PatchRow layout contract.
+                            // Subtle indent under a location header (or for single-location rows when enabled).
+                            // Wrapper is used to preserve PatchRow layout contract.
                             int indent = Math.max(8, Math.round(10 * config.textScale().multiplier()));
                             rowWrap.setBorder(BorderFactory.createEmptyBorder(0, indent, 0, 0));
                         }

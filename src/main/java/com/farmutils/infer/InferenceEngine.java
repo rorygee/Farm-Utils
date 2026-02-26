@@ -866,6 +866,13 @@ public class    InferenceEngine implements PatchInferenceEngine
             {
                 reasons.add(ReasonCode.DERIVED_FROM_EVENTS);
                 reasons.add(ReasonCode.NO_SCHEDULE);
+
+                // A ready-stage observation is stronger than any missing schedule.
+                if (isReadyStage(patchId, s))
+                {
+                    reasons.add(ReasonCode.DERIVED_FROM_STAGE);
+                    return new PatchInference(patchId, InferredStage.READY, lastObservedAt, null, null, 0.8f, reasons);
+                }
                 return new PatchInference(patchId, InferredStage.GROWING, lastObservedAt, null, null, 0.9f, reasons);
             }
 
@@ -967,6 +974,13 @@ public class    InferenceEngine implements PatchInferenceEngine
             {
                 reasons.add(ReasonCode.DERIVED_FROM_EVENTS);
                 reasons.add(ReasonCode.NO_SCHEDULE);
+
+                // If we directly observe a max/ready stage, mark READY even without a schedule.
+                if (isReadyStage(patchId, s))
+                {
+                    reasons.add(ReasonCode.DERIVED_FROM_STAGE);
+                    return new PatchInference(patchId, InferredStage.READY, lastObservedAt, null, null, 0.8f, reasons);
+                }
                 return new PatchInference(patchId, InferredStage.GROWING, lastObservedAt, null, null, 0.9f, reasons);
             }
 

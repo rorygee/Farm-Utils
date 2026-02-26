@@ -155,7 +155,19 @@ public interface FarmutilsConfig extends Config
         return true;
     }
 
-    enum SelectionOutlineColor
+    @ConfigItem(
+            keyName = "indentSingleLocationRows",
+            name = "Indent single patch rows",
+            description = "Indent patch rows to match rows shown under location headings, even when only one patch is visible.",
+            position = 8,
+            section = appearanceSection
+    )
+    default boolean indentSingleLocationRows()
+    {
+        return false;
+    }
+
+enum SelectionOutlineColor
     {
         WHITE,
         ACCENT_ORANGE
