@@ -269,9 +269,23 @@ enum SelectionOutlineColor
 
     enum CollapsedCaretMode
     {
-        GREY,
-        STATE_OVERVIEW,
-        CUSTOM
+        GREY("Grey"),
+        STATE_OVERVIEW("State (Muted)"),
+        STATE("State"),
+        CUSTOM("Custom");
+
+        private final String label;
+
+        CollapsedCaretMode(String label)
+        {
+            this.label = label;
+        }
+
+        @Override
+        public String toString()
+        {
+            return label;
+        }
     }
 
     @ConfigItem(

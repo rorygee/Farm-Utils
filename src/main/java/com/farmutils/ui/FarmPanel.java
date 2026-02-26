@@ -1023,6 +1023,9 @@ public class FarmPanel extends JPanel
             case CUSTOM:
                 Color cc = config.collapsedCaretCustomColor();
                 return (cc != null) ? cc : TRI_DISABLED;
+            case STATE:
+                Color baseStrong = aggregateToConfiguredStateColor(aggregate);
+                return (baseStrong != null) ? baseStrong : TRI_DISABLED;
             case STATE_OVERVIEW:
                 Color base = aggregateToConfiguredStateColor(aggregate);
                 Color hint = UiColors.mutedHint(base, headerBackground);
