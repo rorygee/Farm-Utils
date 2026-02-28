@@ -5,6 +5,7 @@ import com.farmutils.model.PatchId;
 import com.farmutils.model.PatchQualifier;
 import com.farmutils.model.PatchState;
 import com.farmutils.model.PatchView;
+import com.farmutils.route.RouteStore;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
 import net.runelite.client.ui.ClientUI;
@@ -64,6 +65,9 @@ public class FarmPanel extends JPanel
     private final FarmutilsConfig config;
     private final ItemManager itemManager;
 
+    /** Runtime-only: optional route store used for patch context menu actions. */
+    private RouteStore routeStore;
+
     private final JScrollPane scrollPane;
 
     private final JPanel container = new ScrollContentPanel.ViewportWidthPanel();
@@ -72,6 +76,9 @@ public class FarmPanel extends JPanel
     private String filterText = "";
 
     private FilterCaseMode filterCaseMode = FilterCaseMode.INSENSITIVE;
+
+    // Parsed representation of the current filterText. Updated in setFilterQuery().
+    private FilterQuery parsedFilter = FilterQuery.empty();
 
     private List<String> lastCanonicalGroupOrder = Collections.emptyList();
 
@@ -179,6 +186,8 @@ public class FarmPanel extends JPanel
         this.scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         UiScrollbars.apply(this.scrollPane, config);
 
+        installClickOutsideSelectionClear();
+
         add(this.scrollPane, BorderLayout.CENTER);
 
         JPanel bottomDivider = new JPanel();
@@ -211,6 +220,79 @@ public class FarmPanel extends JPanel
         rebuild();
     }
 
+    /**
+     * Provides access to the runtime-only RouteStore so patch context-menu actions can add patches
+     * to routes without introducing persistence or cross-panel coupling.
+     */
+    public void setRouteStore(RouteStore routeStore)
+    {
+        this.routeStore = routeStore;
+
+        // Rebuild so newly-created PatchRow instances can surface the Routes context-menu.
+        if (SwingUtilities.isEventDispatchThread())
+        {
+            rebuild();
+        }
+        else
+        {
+            SwingUtilities.invokeLater(this::rebuild);
+        }
+    }
+
+    /**
+     * Runtime-only accessors for sibling panels (e.g. Routes) that need to
+     * render patch-derived visuals without duplicating ownership of stores.
+     *
+     * Contract: read-only usage; do not mutate selection semantics from other panels.
+     */
+    public PatchStore getPatchStore()
+    {
+        return store;
+    }
+
+    public ItemManager getItemManager()
+    {
+        return itemManager;
+    }
+
+    /**
+     * Task F: Clicking empty space in the list viewport clears selection.
+     *
+     * Notes:
+     * - Only triggers on left-click.
+     * - Mouse events only reach the viewport when clicking on "empty" space (not on child rows/headers).
+     * - Does not interfere with scrolling, drag handles, right-click menus, or row hover.
+     */
+    private void installClickOutsideSelectionClear()
+    {
+        JViewport vp = this.scrollPane != null ? this.scrollPane.getViewport() : null;
+        if (vp == null)
+        {
+            return;
+        }
+
+        vp.addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mousePressed(MouseEvent e)
+            {
+                if (!SwingUtilities.isLeftMouseButton(e))
+                {
+                    return;
+                }
+
+                if (uiStateStore == null || uiStateStore.getSelectedPatchesView().isEmpty())
+                {
+                    return;
+                }
+
+                uiStateStore.clearSelection();
+                // Paint-only: selection is purely visual; no rebuild needed.
+                list.repaint();
+            }
+        });
+    }
+
     public void refreshUiFromConfig()
     {
         applyScrollbarConfig();
@@ -231,6 +313,8 @@ public class FarmPanel extends JPanel
     {
         this.filterText = (text == null) ? "" : text.trim();
         this.filterCaseMode = (caseMode == null) ? FilterCaseMode.INSENSITIVE : caseMode;
+
+        this.parsedFilter = FilterQuery.parse(this.filterText, this.filterCaseMode);
         rebuild();
     }
 
@@ -376,6 +460,7 @@ public class FarmPanel extends JPanel
                         PatchRow row = new PatchRow(
                                 id,
                                 store,
+                                routeStore,
                                 uiStateStore,
                                 itemManager,
                                 config,
@@ -555,6 +640,7 @@ public class FarmPanel extends JPanel
                         PatchRow row = new PatchRow(
                                 id,
                                 store,
+                                routeStore,
                                 uiStateStore,
                                 itemManager,
                                 config,
@@ -638,24 +724,433 @@ public class FarmPanel extends JPanel
     }
 
     private boolean matchesFilter(PatchId id, String groupName)
+{
+    if (parsedFilter == null || parsedFilter.isEmpty())
     {
-        if (filterText == null || filterText.isEmpty())
+        return true;
+    }
+
+    // Candidate strings must track what the renderer uses, plus PatchId.name().
+    String patchTypeLabel = groupName;
+    String locationDisplay = (id.getLocationName() != null) ? id.getLocationName() : id.getLabel();
+    String slotDisplay = (id.getSlotLabel() != null) ? id.getSlotLabel() : id.getQualifierDetail();
+
+    String stateDisplay = "UNKNOWN";
+    try
+    {
+        PatchView view = store != null ? store.view(id) : null;
+        if (view != null && view.getRecord().isPresent() && view.getRecord().get().getState() != null)
         {
-            return true;
+            stateDisplay = view.getRecord().get().getState().name();
+        }
+    }
+    catch (Exception ignored)
+    {
+        // Robustness: filter must never break rendering.
+    }
+
+    return parsedFilter.matches(
+            patchTypeLabel,
+            locationDisplay,
+            slotDisplay,
+            id.name(),
+            stateDisplay
+    );
+}
+
+
+private enum FilterField
+{
+    TYPE,
+    LOCATION,
+    STATE
+}
+
+/**
+ * Parsed filter query supporting simple fielded tokens (Google-style):
+ * - loc:value / l:value
+ * - type:value / t:value
+ * - state:value / s:value
+ *
+ * Supports:
+ * - key:value and key=value
+ * - quoted values with spaces: loc:"farming guild"
+ * - multiple values via commas: loc:falador,hosidius
+ * - graceful fallback: invalid tokens become free-text terms
+ */
+private static final class FilterQuery
+{
+    private final FilterCaseMode caseMode;
+    private final EnumMap<FilterField, java.util.List<String>> fieldValues;
+    private final java.util.List<String> freeTerms;
+
+    private FilterQuery(FilterCaseMode caseMode, EnumMap<FilterField, java.util.List<String>> fieldValues, java.util.List<String> freeTerms)
+    {
+        this.caseMode = caseMode == null ? FilterCaseMode.INSENSITIVE : caseMode;
+        this.fieldValues = fieldValues == null ? new EnumMap<>(FilterField.class) : fieldValues;
+        this.freeTerms = freeTerms == null ? java.util.Collections.emptyList() : freeTerms;
+    }
+
+    static FilterQuery empty()
+    {
+        return new FilterQuery(FilterCaseMode.INSENSITIVE, new EnumMap<>(FilterField.class), java.util.Collections.emptyList());
+    }
+
+    boolean isEmpty()
+    {
+        return (fieldValues == null || fieldValues.isEmpty())
+                && (freeTerms == null || freeTerms.isEmpty());
+    }
+
+    static FilterQuery parse(String input, FilterCaseMode caseMode)
+    {
+        String raw = input == null ? "" : input.trim();
+        FilterCaseMode cm = caseMode == null ? FilterCaseMode.INSENSITIVE : caseMode;
+
+        if (raw.isEmpty())
+        {
+            return new FilterQuery(cm, new EnumMap<>(FilterField.class), java.util.Collections.emptyList());
         }
 
-        String q = normalize(filterText, filterCaseMode);
+        EnumMap<FilterField, java.util.List<String>> fields = new EnumMap<>(FilterField.class);
+        java.util.List<String> free = new java.util.ArrayList<>();
 
-        // Candidate strings must track what the renderer uses, plus PatchId.name().
-        String patchTypeLabel = groupName;
-        String locationDisplay = (id.getLocationName() != null) ? id.getLocationName() : id.getLabel();
-        String slotDisplay = (id.getSlotLabel() != null) ? id.getSlotLabel() : id.getQualifierDetail();
+        for (String token : tokenizeQuery(raw))
+        {
+            if (token == null)
+            {
+                continue;
+            }
+            String t = token.trim();
+            if (t.isEmpty())
+            {
+                continue;
+            }
 
-        if (contains(patchTypeLabel, q)) return true;
-        if (contains(locationDisplay, q)) return true;
-        if (contains(slotDisplay, q)) return true;
-        return contains(id.name(), q);
+            ParsedFieldToken parsed = tryParseFieldToken(t, cm);
+            if (parsed != null)
+            {
+                java.util.List<String> list = fields.computeIfAbsent(parsed.field, k -> new java.util.ArrayList<>());
+                list.addAll(parsed.values);
+                continue;
+            }
+
+            // Graceful fallback: treat as free-text
+            String term = normalize(unquote(t), cm);
+            if (!term.isEmpty())
+            {
+                free.add(term);
+            }
+        }
+
+        // Ensure all collected values are normalized, trimmed, and non-empty.
+        fields.entrySet().removeIf(e -> e.getValue() == null || e.getValue().isEmpty());
+
+        return new FilterQuery(cm, fields, free);
     }
+
+    boolean matches(String patchTypeLabel, String locationDisplay, String slotDisplay, String patchIdName, String stateDisplay)
+    {
+        // Pre-normalize candidates once.
+        String nType = normalize(patchTypeLabel, caseMode);
+        String nLoc = normalize(locationDisplay, caseMode);
+        String nSlot = normalize(slotDisplay, caseMode);
+        String nId = normalize(patchIdName, caseMode);
+        String nState = normalize(stateDisplay, caseMode);
+
+        // Fielded terms: AND across fields, OR within a field.
+        for (Map.Entry<FilterField, java.util.List<String>> e : fieldValues.entrySet())
+        {
+            FilterField f = e.getKey();
+            java.util.List<String> needles = e.getValue();
+            if (needles == null || needles.isEmpty())
+            {
+                continue;
+            }
+
+            String candidate;
+            switch (f)
+            {
+                case TYPE:
+                    candidate = nType;
+                    break;
+                case LOCATION:
+                    candidate = nLoc;
+                    break;
+                case STATE:
+                    candidate = nState;
+                    break;
+                default:
+                    candidate = "";
+            }
+
+            boolean any = false;
+            for (String needle : needles)
+            {
+                if (needle == null || needle.isEmpty())
+                {
+                    continue;
+                }
+                if (candidate.contains(needle))
+                {
+                    any = true;
+                    break;
+                }
+            }
+
+            if (!any)
+            {
+                return false;
+            }
+        }
+
+        // Free terms: AND across terms; each term can match any default field.
+        for (String term : freeTerms)
+        {
+            if (term == null || term.isEmpty())
+            {
+                continue;
+            }
+
+            boolean hit = nType.contains(term)
+                    || nLoc.contains(term)
+                    || nSlot.contains(term)
+                    || nId.contains(term);
+
+            if (!hit)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static final class ParsedFieldToken
+    {
+        final FilterField field;
+        final java.util.List<String> values;
+
+        ParsedFieldToken(FilterField field, java.util.List<String> values)
+        {
+            this.field = field;
+            this.values = values;
+        }
+    }
+
+    private static ParsedFieldToken tryParseFieldToken(String token, FilterCaseMode cm)
+    {
+        if (token == null)
+        {
+            return null;
+        }
+
+        // Find first ':' or '=' outside of quotes.
+        int delim = -1;
+        boolean inQuotes = false;
+        for (int i = 0; i < token.length(); i++)
+        {
+            char ch = token.charAt(i);
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            if (!inQuotes && (ch == ':' || ch == '='))
+            {
+                delim = i;
+                break;
+            }
+        }
+
+        if (delim <= 0 || delim >= token.length() - 1)
+        {
+            return null;
+        }
+
+        String key = token.substring(0, delim).trim();
+        String rawValue = token.substring(delim + 1).trim();
+        if (key.isEmpty() || rawValue.isEmpty())
+        {
+            return null;
+        }
+
+        // Only treat as a field token when the key is alphabetic.
+        for (int i = 0; i < key.length(); i++)
+        {
+            if (!Character.isLetter(key.charAt(i)))
+            {
+                return null;
+            }
+        }
+
+        FilterField field = resolveKey(key);
+        if (field == null)
+        {
+            return null;
+        }
+
+        java.util.List<String> values = new java.util.ArrayList<>();
+        for (String part : splitCsvValues(rawValue))
+        {
+            if (part == null)
+            {
+                continue;
+            }
+            String v = unquote(part.trim());
+            if (v.isEmpty())
+            {
+                continue;
+            }
+            values.add(normalize(v, cm));
+        }
+
+        if (values.isEmpty())
+        {
+            return null;
+        }
+
+        return new ParsedFieldToken(field, values);
+    }
+
+    private static FilterField resolveKey(String key)
+    {
+        if (key == null)
+        {
+            return null;
+        }
+
+        String k = key.trim().toLowerCase(Locale.ROOT);
+        switch (k)
+        {
+            case "t":
+            case "type":
+                return FilterField.TYPE;
+
+            case "l":
+            case "loc":
+            case "location":
+                return FilterField.LOCATION;
+
+            case "s":
+            case "state":
+                return FilterField.STATE;
+
+            default:
+                return null;
+        }
+    }
+
+    private static java.util.List<String> tokenizeQuery(String input)
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (input == null || input.isEmpty())
+        {
+            return out;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < input.length(); i++)
+        {
+            char ch = input.charAt(i);
+
+            // Support escaped quotes inside quoted values: "
+            if (ch == '\\' && i + 1 < input.length() && input.charAt(i + 1) == '"')
+            {
+                sb.append('"');
+                i++;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+                sb.append(ch);
+                continue;
+            }
+
+            if (!inQuotes && Character.isWhitespace(ch))
+            {
+                if (sb.length() > 0)
+                {
+                    out.add(sb.toString());
+                    sb.setLength(0);
+                }
+                continue;
+            }
+
+            sb.append(ch);
+        }
+
+        if (sb.length() > 0)
+        {
+            out.add(sb.toString());
+        }
+
+        return out;
+    }
+
+    private static java.util.List<String> splitCsvValues(String input)
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (input == null)
+        {
+            return out;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < input.length(); i++)
+        {
+            char ch = input.charAt(i);
+
+            // Support escaped quotes: "
+            if (ch == '\\' && i + 1 < input.length() && input.charAt(i + 1) == '"')
+            {
+                sb.append('"');
+                i++;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+                sb.append(ch);
+                continue;
+            }
+
+            if (!inQuotes && ch == ',')
+            {
+                out.add(sb.toString());
+                sb.setLength(0);
+                continue;
+            }
+
+            sb.append(ch);
+        }
+
+        out.add(sb.toString());
+        return out;
+    }
+
+    private static String unquote(String s)
+    {
+        if (s == null)
+        {
+            return "";
+        }
+
+        String t = s.trim();
+        if (t.length() >= 2 && t.startsWith("\"") && t.endsWith("\""))
+        {
+            return t.substring(1, t.length() - 1).trim();
+        }
+        return t;
+    }
+}
 
     private boolean contains(String candidate, String normalizedQuery)
     {

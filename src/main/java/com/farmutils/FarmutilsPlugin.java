@@ -3,6 +3,9 @@ package com.farmutils;
 import com.farmutils.ui.FarmPanel;
 import com.farmutils.ui.FarmRootPanel;
 import com.farmutils.ui.FarmStubPanel;
+import com.farmutils.ui.RoutesPanel;
+import com.farmutils.route.RouteStore;
+import com.farmutils.route.RouteSessionStore;
 import com.farmutils.storage.UiStateStore;
 import com.farmutils.infer.InferenceEngine;
 import com.farmutils.observe.Varbit4771AllotmentVarbitObserver;
@@ -99,6 +102,9 @@ public class FarmutilsPlugin extends Plugin
 	private UiStateStore uiStateStore;
 
 	private FarmRootPanel rootPanel;
+	private RoutesPanel routesPanel;
+	private RouteStore routeStore;
+	private RouteSessionStore routeSessionStore;
 
 	private NavigationButton navButton;
 
@@ -263,12 +269,18 @@ public class FarmutilsPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		routeStore = new RouteStore();
+		routeSessionStore = new RouteSessionStore();
+		farmPanel.setRouteStore(routeStore);
+
+		routesPanel = new RoutesPanel(config, routeStore, routeSessionStore, farmPanel.getPatchStore(), farmPanel.getItemManager(), uiStateStore);
+
 		rootPanel = new FarmRootPanel(
 				config,
 				clientUI,
 				uiStateStore,
 				farmPanel,
-				new FarmStubPanel("Routes", "Route planning will be added later."),
+				routesPanel,
 				new FarmStubPanel("Calc", "Profit and XP calculations will be added later."),
 				new FarmStubPanel("Export", "Export and sharing features will be added later.")
 		);
@@ -477,6 +489,11 @@ public class FarmutilsPlugin extends Plugin
 			{
 				farmPanel.rebuild();
 			}
+
+			if (routesPanel != null && rootPanel != null && rootPanel.isRoutesActive())
+			{
+				routesPanel.refreshFromStore();
+			}
 		}
 
 		// Even when inference outputs are unchanged, progress bars may advance due to time-driven
@@ -488,6 +505,11 @@ public class FarmutilsPlugin extends Plugin
 			if (farmPanel != null)
 			{
 				SwingUtilities.invokeLater(farmPanel::repaint);
+			}
+
+			if (routesPanel != null && rootPanel != null && rootPanel.isRoutesActive())
+			{
+				SwingUtilities.invokeLater(routesPanel::repaint);
 			}
 		}
 	}
@@ -513,8 +535,12 @@ public class FarmutilsPlugin extends Plugin
 			if (farmPanel != null)
 				{
 					farmPanel.refreshUiFromConfig();
-			}
-			break;
+				}
+				if (rootPanel != null)
+				{
+					rootPanel.refreshActivePanelFromConfig();
+				}
+				break;
 			// Navigation chrome
 			case "navContent":
 			case "navColumns":
@@ -534,6 +560,13 @@ public class FarmutilsPlugin extends Plugin
 				if (farmPanel != null)
 				{
 					farmPanel.refreshUiFromConfig();
+				}
+				break;
+
+			case "showFilterSearchIcon":
+				if (rootPanel != null)
+				{
+					rootPanel.refreshUiFromConfig();
 				}
 				break;
 
@@ -565,6 +598,10 @@ public class FarmutilsPlugin extends Plugin
 				if (farmPanel != null)
 				{
 					farmPanel.refreshUiFromConfig();
+				}
+				if (rootPanel != null)
+				{
+					rootPanel.refreshActivePanelFromConfig();
 				}
 				break;
 

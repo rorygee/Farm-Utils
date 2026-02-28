@@ -8,6 +8,9 @@ import com.farmutils.model.PatchView;
 import com.farmutils.infer.GrowthProgress;
 import com.farmutils.infer.PatchInference;
 import com.farmutils.infer.InferredStage;
+import com.farmutils.route.Route;
+import com.farmutils.route.RouteId;
+import com.farmutils.route.RouteStore;
 import com.farmutils.storage.PatchStore;
 import com.farmutils.storage.UiStateStore;
 import net.runelite.client.game.ItemManager;
@@ -25,14 +28,22 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 import java.util.List;
+import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.Optional;
 import java.util.OptionalInt;
 
 import net.runelite.client.util.AsyncBufferedImage;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Locale;
+
 public class PatchRow extends JPanel
 {
+    private static final Logger log = LoggerFactory.getLogger(PatchRow.class);
     private static final int PAD_X = 8;
     private static final int PAD_Y = 6;
 
@@ -40,6 +51,7 @@ public class PatchRow extends JPanel
 
     private final UiStateStore uiStateStore;
     private final PatchStore store;
+    private final RouteStore routeStore;
     private final PatchId patchId;
     private final PatchView view;
     private final FarmutilsConfig config;
@@ -52,14 +64,14 @@ public class PatchRow extends JPanel
 	private Point selectionPressPoint;
 	private static final int SELECTION_DRAG_THRESHOLD_PX = 5;
 
-    public PatchRow(PatchId id, PatchStore store, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, Runnable onChange)
+    public PatchRow(PatchId id, PatchStore store, RouteStore routeStore, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, Runnable onChange)
     {
-        this(id, store, uiStateStore, itemManager, config, true, null, null, onChange);
+        this(id, store, routeStore, uiStateStore, itemManager, config, true, null, null, onChange);
     }
 
-    public PatchRow(PatchId id, PatchStore store, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, boolean showIndicator, Runnable onChange)
+    public PatchRow(PatchId id, PatchStore store, RouteStore routeStore, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, boolean showIndicator, Runnable onChange)
     {
-        this(id, store, uiStateStore, itemManager, config, showIndicator, null, null, onChange);
+        this(id, store, routeStore, uiStateStore, itemManager, config, showIndicator, null, null, onChange);
     }
 
     /**
@@ -67,10 +79,11 @@ public class PatchRow extends JPanel
      * @param indicatorOverride Optional replacement for the secondary/indicator line.
      *                          If null, the indicator shows patch state (Unknown/Growing/etc.).
      */
-    public PatchRow(PatchId id, PatchStore store, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, boolean showIndicator, String titleSuffix, String indicatorOverride, Runnable onChange)
+    public PatchRow(PatchId id, PatchStore store, RouteStore routeStore, UiStateStore uiStateStore, ItemManager itemManager, FarmutilsConfig config, boolean showIndicator, String titleSuffix, String indicatorOverride, Runnable onChange)
     {
         this.uiStateStore = uiStateStore;
         this.store = store;
+        this.routeStore = routeStore;
         this.patchId = id;
         this.view = store.view(id);
         this.config = config;
@@ -386,6 +399,102 @@ public class PatchRow extends JPanel
 
 		menu.addSeparator();
 
+		// Routes: runtime-only patch grouping. Keep this lightweight and non-invasive.
+		// Keep nesting shallow: main menu -> Add to route -> <routes...>
+		if (routeStore != null)
+		{
+			JMenu addToRoute = new JMenu("Add to route");
+
+			List<Route> routes = new ArrayList<>(routeStore.list());
+			routes.sort(
+				Comparator
+					.comparing((Route r) -> r.getName().toLowerCase(Locale.ROOT))
+					.thenComparing(r -> r.getId().toString())
+			);
+
+			if (routes.isEmpty())
+			{
+				JMenuItem none = new JMenuItem("(No routes yet)");
+				none.setEnabled(false);
+				addToRoute.add(none);
+			}
+			else
+			{
+				for (Route r : routes)
+				{
+					final RouteId rid = r.getId();
+					final String routeName = r.getName();
+					JMenuItem item = new JMenuItem(routeName);
+					item.addActionListener(ev ->
+					{
+						List<PatchId> targets = getActionTargetPatchIdsInVisibleOrder();
+						int added = 0;
+						int dupes = 0;
+						for (PatchId pid : targets)
+						{
+							if (pid == null)
+							{
+								continue;
+							}
+							boolean ok = routeStore.addPatch(rid, pid);
+							if (ok)
+							{
+								added++;
+							}
+							else
+							{
+								dupes++;
+							}
+						}
+						log.info("[routes] added {} patches to route '{}' (ignored {} duplicates)", added, routeName, dupes);
+					});
+					addToRoute.add(item);
+				}
+			}
+
+			addToRoute.addSeparator();
+			// Disambiguate from a user-created route named "New route".
+			JMenuItem newRoute = new JMenuItem("Create new route…");
+			newRoute.addActionListener(ev ->
+			{
+				String name = JOptionPane.showInputDialog(
+						PatchRow.this,
+						"Route name:",
+						"Create route",
+						JOptionPane.PLAIN_MESSAGE
+				);
+				if (name == null)
+				{
+					return;
+				}
+				name = name.trim();
+				if (name.isEmpty())
+				{
+					return;
+				}
+
+				Route created = routeStore.create(name);
+				List<PatchId> targets = getActionTargetPatchIdsInVisibleOrder();
+				int added = 0;
+				for (PatchId pid : targets)
+				{
+					if (pid == null)
+					{
+						continue;
+					}
+					if (routeStore.addPatch(created.getId(), pid))
+					{
+						added++;
+					}
+				}
+				log.info("[routes] created route '{}' and added {} patches", created.getName(), added);
+			});
+			addToRoute.add(newRoute);
+
+			menu.add(addToRoute);
+			menu.addSeparator();
+		}
+
 		JMenuItem hidePatchItem = new JMenuItem();
 		hidePatchItem.addActionListener(e ->
 		{
@@ -452,6 +561,43 @@ public class PatchRow extends JPanel
 		}
 
 		return Set.of(patchId);
+	}
+
+	/**
+	 * Like getActionTargetPatchIds(), but returns targets in the last visible UI order.
+	 *
+	 * This is used for route insertion so multi-select adds are deterministic and match what the user
+	 * sees on screen.
+	 */
+	private List<PatchId> getActionTargetPatchIdsInVisibleOrder()
+	{
+		if (uiStateStore == null || patchId == null)
+		{
+			return List.of(patchId);
+		}
+
+		Set<PatchId> selected = uiStateStore.getSelectedPatchesView();
+		if (selected != null && selected.size() > 1 && selected.contains(patchId))
+		{
+			List<PatchId> visibleOrder = uiStateStore.getLastVisiblePatchOrder();
+			if (visibleOrder != null && !visibleOrder.isEmpty())
+			{
+				List<PatchId> out = new ArrayList<>();
+				for (PatchId pid : visibleOrder)
+				{
+					if (selected.contains(pid))
+					{
+						out.add(pid);
+					}
+				}
+				return out;
+			}
+
+			// Fallback: deterministic iteration order is not guaranteed, but at least we don't expose the live set.
+			return new ArrayList<>(Set.copyOf(selected));
+		}
+
+		return List.of(patchId);
 	}
 
 	private void installSelectionAndContextHandlers(JPopupMenu menu, JMenuItem hidePatchItem)

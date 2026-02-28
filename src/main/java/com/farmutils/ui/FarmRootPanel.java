@@ -10,6 +10,7 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.text.DefaultEditorKit;
 import javax.swing.border.EmptyBorder;
@@ -21,11 +22,134 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelListener;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.EnumMap;
 import java.util.Map;
 
 public class FarmRootPanel extends PluginPanel
 {
+
+    /**
+     * Border that reserves left padding for an optional icon and paints it inside the inset.
+     * Keeps sizing logic centralized in applyFilterSizing() so text scale changes are consistent.
+     */
+    private static final class LeftIconBorder extends javax.swing.border.AbstractBorder
+    {
+        private final Insets insets;
+        private final javax.swing.Icon icon;
+        private final int iconX;
+
+        LeftIconBorder(int top, int leftPad, int bottom, int right, javax.swing.Icon icon, int iconGap)
+        {
+            int extra = 0;
+            if (icon != null)
+            {
+                extra = icon.getIconWidth() + Math.max(0, iconGap);
+            }
+            this.insets = new Insets(top, leftPad + extra, bottom, right);
+            this.icon = icon;
+            this.iconX = leftPad;
+        }
+
+        @Override
+        public Insets getBorderInsets(Component c)
+        {
+            return (Insets) insets.clone();
+        }
+
+        @Override
+        public Insets getBorderInsets(Component c, Insets insets)
+        {
+            insets.top = this.insets.top;
+            insets.left = this.insets.left;
+            insets.bottom = this.insets.bottom;
+            insets.right = this.insets.right;
+            return insets;
+        }
+
+        @Override
+        public void paintBorder(Component c, Graphics g, int x, int y, int width, int height)
+        {
+            if (icon == null)
+            {
+                return;
+            }
+
+            int iy = y + (height - icon.getIconHeight()) / 2;
+            icon.paintIcon(c, g, x + iconX, iy);
+        }
+    }
+
+    /**
+     * Recolors an ARGB icon image to match the component foreground at paint-time.
+     * This keeps the search glyph consistent with placeholder/text color without shipping
+     * multiple pre-tinted assets.
+     */
+    private static final class ForegroundTintIcon implements javax.swing.Icon
+    {
+        private final BufferedImage base;
+        private final int w;
+        private final int h;
+        private final Map<Integer, BufferedImage> cache = new HashMap<>();
+
+        ForegroundTintIcon(BufferedImage base)
+        {
+            this.base = base;
+            this.w = base.getWidth();
+            this.h = base.getHeight();
+        }
+
+        @Override
+        public int getIconWidth()
+        {
+            return w;
+        }
+
+        @Override
+        public int getIconHeight()
+        {
+            return h;
+        }
+
+        private BufferedImage tinted(Color color)
+        {
+            int rgb = color.getRGB() & 0x00FFFFFF;
+            return cache.computeIfAbsent(rgb, k ->
+            {
+                BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                for (int yy = 0; yy < h; yy++)
+                {
+                    for (int xx = 0; xx < w; xx++)
+                    {
+                        int argb = base.getRGB(xx, yy);
+                        int a = (argb >>> 24) & 0xFF;
+                        if (a == 0)
+                        {
+                            out.setRGB(xx, yy, 0);
+                            continue;
+                        }
+                        out.setRGB(xx, yy, (a << 24) | rgb);
+                    }
+                }
+                return out;
+            });
+        }
+
+        @Override
+        public void paintIcon(Component c, Graphics g, int x, int y)
+        {
+            Color fg = c == null ? ColorScheme.TEXT_COLOR : c.getForeground();
+            if (fg == null)
+            {
+                fg = ColorScheme.TEXT_COLOR;
+            }
+
+            BufferedImage img = tinted(fg);
+            g.drawImage(img, x, y, null);
+        }
+    }
     public enum Mode
     {
         PATCHES("Patches", "patches"),
@@ -53,9 +177,25 @@ public class FarmRootPanel extends PluginPanel
         }
     }
 
-    private static final String FILTER_PLACEHOLDER = "Filter patches…";
+    private static final String FILTER_PLACEHOLDER_PATCHES = "Filter patches…";
+    private static final String FILTER_PLACEHOLDER_ROUTES = "Filter routes…";
     private static final String PROP_NAV_BASE_FONT = "farmutils.navBaseFont";
     private static final String PROP_FILTER_BASE_FONT = "farmutils.filterBaseFont";
+
+    private static boolean isChromeMode(Mode mode)
+    {
+        return mode == Mode.PATCHES || mode == Mode.ROUTES;
+    }
+
+    private static boolean isFilterPlaceholder(String text)
+    {
+        return FILTER_PLACEHOLDER_PATCHES.equals(text) || FILTER_PLACEHOLDER_ROUTES.equals(text);
+    }
+
+    private static String placeholderFor(Mode mode)
+    {
+        return mode == Mode.ROUTES ? FILTER_PLACEHOLDER_ROUTES : FILTER_PLACEHOLDER_PATCHES;
+    }
 
     private static final class PreferredCardPanel extends JPanel
     {
@@ -95,6 +235,7 @@ public class FarmRootPanel extends PluginPanel
     private final FarmutilsConfig config;
     private final UiStateStore uiStateStore;
     private final FarmPanel farmPanel;
+    private final RoutesPanel routesPanel;
     private final ClientUI clientUI;
 
     private final JPanel nav = new JPanel(new GridBagLayout());
@@ -102,11 +243,22 @@ public class FarmRootPanel extends PluginPanel
     private final JPanel chrome = new JPanel();
     private final JPanel filterRow = new JPanel(new BorderLayout());
     private final JPanel toolbarRow = new JPanel(new BorderLayout());
+
+    private static final String TOOLBAR_CARD_PATCHES = "patches";
+    private static final String TOOLBAR_CARD_ROUTES = "routes";
+    private final CardLayout toolbarCardLayout = new CardLayout();
+    private final JPanel toolbarCards = new JPanel(toolbarCardLayout);
+
+    // Visible toolbar content panels (used to recompute toolbar row height on card switches).
+    private JPanel patchesToolbarContent;
+    private JPanel routesToolbarContent;
+
     private final JComponent chromeDivider = divider();
 
     private final JTextField filterField = new JTextField();
     // Updated in buildToolbar(); invoked after FarmPanel rebuild completes.
     private Runnable refreshCollapseAll = () -> {};
+    private Runnable refreshRoutesToolbar = () -> {};
     private final JButton restoreToolbarButton = new JButton("▾");
     private JToggleButton hideToolbarToggle;
 
@@ -133,6 +285,7 @@ public class FarmRootPanel extends PluginPanel
         this.clientUI = clientUI;
         this.uiStateStore = uiStateStore;
         this.farmPanel = farmPanel;
+        this.routesPanel = (routesPanel instanceof RoutesPanel) ? (RoutesPanel) routesPanel : null;
 
         // Painted “floor” so no white bleed-through anywhere
         setOpaque(true);
@@ -146,6 +299,12 @@ public class FarmRootPanel extends PluginPanel
         buildNav();
         buildChrome();
         buildCards(farmPanel, routesPanel, calcPanel, exportPanel);
+
+        // Allow the Routes panel to request toolbar refreshes without coupling to root state.
+        if (this.routesPanel != null)
+        {
+            this.routesPanel.setOnUiStateChange(() -> refreshRoutesToolbar.run());
+        }
 
         add(chrome, BorderLayout.NORTH);
         add(cards, BorderLayout.CENTER);
@@ -181,19 +340,29 @@ public class FarmRootPanel extends PluginPanel
         filterRow.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
 
         filterField.setOpaque(false);
-        filterField.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        // Tighten left padding so the placeholder text aligns with other left-justified chrome elements.
+        // Also zero the JTextField margin (LAF-dependent) so the EmptyBorder is the single source of truth.
+        filterField.setMargin(new Insets(0, 0, 0, 0));
+        filterField.setBorder(BorderFactory.createEmptyBorder(6, 2, 6, 8));
         filterField.setCaretColor(ColorScheme.TEXT_COLOR);
 
         // placeholder
-        filterField.setText(FILTER_PLACEHOLDER);
+        filterField.setText(placeholderFor(current));
         filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+
+// Help: fielded query syntax (no extra UI panels).
+filterField.setToolTipText("<html>"
+        + "Filter examples: <code>l:falador t:herb</code> &nbsp; <code>s:ready</code><br>"
+        + "Quoted values: <code>l:\"farming guild\"</code><br>"
+        + "Also supports <code>key=value</code> and comma lists: <code>l:falador,hosidius</code>"
+        + "</html>");
 
         filterField.addFocusListener(new java.awt.event.FocusAdapter()
         {
             @Override
             public void focusGained(java.awt.event.FocusEvent e)
             {
-                if (FILTER_PLACEHOLDER.equals(filterField.getText()))
+                if (isFilterPlaceholder(filterField.getText()))
                 {
                     filterField.setText("");
                     filterField.setForeground(ColorScheme.TEXT_COLOR);
@@ -205,7 +374,7 @@ public class FarmRootPanel extends PluginPanel
             {
                 if (filterField.getText().isEmpty())
                 {
-                    filterField.setText(FILTER_PLACEHOLDER);
+                    filterField.setText(placeholderFor(current));
                     filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
                 }
             }
@@ -215,27 +384,42 @@ public class FarmRootPanel extends PluginPanel
         {
             private void changed()
             {
-                // Only apply filter when patches mode is active.
-                if (current != Mode.PATCHES)
-                {
-                    return;
-                }
-
                 String t = filterField.getText();
                 if (t == null)
                 {
-                    farmPanel.setFilterText("");
+                    if (current == Mode.PATCHES)
+                    {
+                        farmPanel.setFilterText("");
+                    }
+                    else if (current == Mode.ROUTES && routesPanel != null)
+                    {
+                        routesPanel.setFilterText("");
+                    }
                     return;
                 }
 
                 String trimmed = t.trim();
-                if (trimmed.isEmpty() || FILTER_PLACEHOLDER.equals(t))
+                if (trimmed.isEmpty() || isFilterPlaceholder(t))
                 {
-                    farmPanel.setFilterText("");
+                    if (current == Mode.PATCHES)
+                    {
+                        farmPanel.setFilterText("");
+                    }
+                    else if (current == Mode.ROUTES && routesPanel != null)
+                    {
+                        routesPanel.setFilterText("");
+                    }
                 }
                 else
                 {
-                    farmPanel.setFilterText(trimmed);
+                    if (current == Mode.PATCHES)
+                    {
+                        farmPanel.setFilterText(trimmed);
+                    }
+                    else if (current == Mode.ROUTES && routesPanel != null)
+                    {
+                        routesPanel.setFilterText(trimmed);
+                    }
                 }
             }
             // Toolbar refresh is invoked after rebuild completes.
@@ -257,7 +441,7 @@ public class FarmRootPanel extends PluginPanel
                 public void actionPerformed(ActionEvent e)
                 {
                     String t = filterField.getText();
-                    boolean effectivelyEmpty = (t == null) || t.isEmpty() || FILTER_PLACEHOLDER.equals(t);
+                    boolean effectivelyEmpty = (t == null) || t.isEmpty() || isFilterPlaceholder(t);
                     if (effectivelyEmpty)
                     {
                         clientUI.forceFocus();
@@ -278,7 +462,7 @@ public class FarmRootPanel extends PluginPanel
             public void actionPerformed(java.awt.event.ActionEvent e)
             {
                 String t = filterField.getText();
-                boolean effectivelyEmpty = (t == null) || t.trim().isEmpty() || FILTER_PLACEHOLDER.equals(t);
+                boolean effectivelyEmpty = (t == null) || t.trim().isEmpty() || isFilterPlaceholder(t);
 
                 if (effectivelyEmpty)
                 {
@@ -288,7 +472,10 @@ public class FarmRootPanel extends PluginPanel
 
                 filterField.setText("");
                 filterField.setForeground(ColorScheme.TEXT_COLOR);
-                farmPanel.setFilterText("");
+                if (current == Mode.PATCHES)
+                {
+                    farmPanel.setFilterText("");
+                }
             }
         });
 
@@ -297,6 +484,15 @@ public class FarmRootPanel extends PluginPanel
         // Restore toolbar button (only shown when toolbar is hidden).
         restoreToolbarButton.setFocusable(false);
         restoreToolbarButton.setMargin(new Insets(0, 6, 0, 6));
+
+        // Replace text placeholder with glyph icon (falls back to text if missing).
+        javax.swing.Icon restoreIc = loadToolbarIcon("toolbar_toggle_down", 16);
+        if (restoreIc != null)
+        {
+            restoreToolbarButton.setIcon(restoreIc);
+            restoreToolbarButton.setText("");
+            restoreToolbarButton.setHorizontalAlignment(SwingConstants.CENTER);
+        }
         restoreToolbarButton.setToolTipText("Show toolbar");
         restoreToolbarButton.setVisible(false);
         restoreToolbarButton.addActionListener(e ->
@@ -328,104 +524,14 @@ public class FarmRootPanel extends PluginPanel
         toolbarRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         toolbarRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
 
+        toolbarRow.removeAll();
+        toolbarCards.removeAll();
+        toolbarCards.setOpaque(false);
+        toolbarRow.add(toolbarCards, BorderLayout.CENTER);
+
         JPanel content = new JPanel();
         content.setOpaque(false);
-        content.setLayout(new LayoutManager()
-        {
-            @Override public void addLayoutComponent(String name, Component comp) {}
-            @Override public void removeLayoutComponent(Component comp) {}
-
-            @Override
-            public Dimension preferredLayoutSize(Container parent)
-            {
-                int count = parent.getComponentCount();
-                int w = parent.getWidth();
-                if (w <= 0)
-                {
-                    w = toolbarRow.getWidth();
-                }
-                if (w <= 0)
-                {
-                    Container trp = toolbarRow.getParent();
-                    if (trp != null)
-                    {
-                        w = trp.getWidth();
-                    }
-                }
-
-                if (count <= 0 || w <= 0)
-                {
-                    // Fallback while not yet laid out
-                    return new Dimension(1, 28);
-                }
-                int size = Math.max(18, w / count);
-                return new Dimension(w, size);
-            }
-
-            @Override
-            public Dimension minimumLayoutSize(Container parent)
-            {
-                return preferredLayoutSize(parent);
-            }
-
-            @Override
-            public void layoutContainer(Container parent)
-            {
-                int count = parent.getComponentCount();
-                if (count <= 0)
-                {
-                    return;
-                }
-
-                int w = parent.getWidth();
-                if (w <= 0)
-                {
-                    w = toolbarRow.getWidth();
-                }
-                if (w <= 0)
-                {
-                    Container trp = toolbarRow.getParent();
-                    if (trp != null)
-                    {
-                        w = trp.getWidth();
-                    }
-                }
-                int base = w / count;
-                int rem = w % count;
-
-                int size = Math.max(18, base); // keep usable if very narrow
-
-                // Make the toolbar row match the square height (so it “scales to box height”).
-                int targetH = size;
-                if (toolbarRow.getPreferredSize().height != targetH)
-                {
-                    toolbarRow.setPreferredSize(new Dimension(1, targetH));
-                    toolbarRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, targetH));
-
-                    // Ensure the sticky chrome re-lays out immediately; otherwise the height update
-                    // may not take effect until some later UI interaction triggers a revalidate.
-                    toolbarRow.revalidate();
-                    Container p = toolbarRow.getParent();
-                    if (p != null)
-                    {
-                        p.revalidate();
-                    }
-                    toolbarRow.repaint();
-                }
-
-
-                int x = 0;
-                for (int i = 0; i < count; i++)
-                {
-                    int extra = (i < rem) ? 1 : 0; // distribute leftover pixels
-                    int bw = base + extra;
-
-                    Component c = parent.getComponent(i);
-                    c.setBounds(x, 0, bw, targetH);
-                    x += bw;
-                }
-            }
-        });
+        content.setLayout(new ToolbarButtonRowLayout());
 
         // Tooltip helper: for now name-only. Later can append description based on config.
         java.util.function.BiFunction<String, String, String> tooltip =
@@ -437,28 +543,47 @@ public class FarmRootPanel extends PluginPanel
             b.setMargin(new Insets(0, 0, 0, 0));
         };
 
+        java.util.function.Function<String, javax.swing.Icon> toolbarIcon =
+                (key) -> loadToolbarIcon(key, 16);
+
+        java.util.function.BiConsumer<AbstractButton, String> applyToolbarGlyph = (b, key) ->
+        {
+            javax.swing.Icon ic = toolbarIcon.apply(key);
+            if (ic != null)
+            {
+                b.setIcon(ic);
+                b.setText("");
+                b.setHorizontalAlignment(SwingConstants.CENTER);
+            }
+        };
+
 
         // --- Suggested non-toggle actions (JButton) ---
         JButton viewBtn = new JButton("V"); // View mode (cycle / open menu later)
         viewBtn.setToolTipText(tooltip.apply("View mode", "Change the list presentation"));
         styleButton.accept(viewBtn);
+        applyToolbarGlyph.accept(viewBtn, "view_mode");
 
         JButton sortBtn = new JButton("S"); // Sort / ordering menu later (not DnD)
         sortBtn.setToolTipText(tooltip.apply("Sort / order", "Change ordering mode"));
         styleButton.accept(sortBtn);
+        applyToolbarGlyph.accept(sortBtn, "sort_order");
 
         JButton collapseAllBtn = new JButton("C"); // Collapse groups/locations (future)
         collapseAllBtn.setToolTipText(tooltip.apply("Collapse / expand", "Collapse or expand sections"));
         styleButton.accept(collapseAllBtn);
+        applyToolbarGlyph.accept(collapseAllBtn, "collapse_expand");
 
         JButton refreshBtn = new JButton("↻"); // Manual refresh (future; maybe forces recalculation)
         refreshBtn.setToolTipText(tooltip.apply("Refresh", "Re-read state / repaint"));
         styleButton.accept(refreshBtn);
+        applyToolbarGlyph.accept(refreshBtn, "refresh");
 
         // --- Suggested toggles (JToggleButton) ---
         JToggleButton reorderTgl = new JToggleButton("R");
         reorderTgl.setToolTipText(tooltip.apply("Reorder", "Enable drag reordering"));
         styleButton.accept(reorderTgl);
+        applyToolbarGlyph.accept(reorderTgl, "reorder_drag");
 
         // Single source of truth is UiStateStore.
         reorderTgl.setSelected(uiStateStore != null && uiStateStore.isReorderModeEnabled());
@@ -655,6 +780,7 @@ public class FarmRootPanel extends PluginPanel
         JToggleButton showDisabledTgl = new JToggleButton("👁");
         showDisabledTgl.getAccessibleContext().setAccessibleName("Show hidden patches");
         styleButton.accept(showDisabledTgl);
+        applyToolbarGlyph.accept(showDisabledTgl, "show_hidden");
 
 		if (uiStateStore != null)
 		{
@@ -683,10 +809,12 @@ public class FarmRootPanel extends PluginPanel
         JToggleButton highlightsTgl = new JToggleButton("H"); // highlight visibility (future)
         highlightsTgl.setToolTipText(tooltip.apply("Show highlights", "Toggle highlight indicators"));
         styleButton.accept(highlightsTgl);
+        applyToolbarGlyph.accept(highlightsTgl, "highlights");
 
         JToggleButton stateLinesTgl = new JToggleButton("L"); // state divider visibility (future)
         stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Cycle patch state indicator line mode"));
         styleButton.accept(stateLinesTgl);
+        applyToolbarGlyph.accept(stateLinesTgl, "state_indicators");
 
         // Runtime-only: cycles how patch state is indicated on each row.
         if (uiStateStore != null)
@@ -711,6 +839,7 @@ public class FarmRootPanel extends PluginPanel
         hideToolbarToggle.setToolTipText(tooltip.apply("Hide toolbar", "Collapse the toolbar row"));
         hideToolbarToggle.getAccessibleContext().setAccessibleName("Hide toolbar");
         styleButton.accept(hideToolbarToggle);
+        applyToolbarGlyph.accept(hideToolbarToggle, "toolbar_toggle");
 
         hideToolbarToggle.setSelected(uiStateStore != null && uiStateStore.isToolbarHidden());
         hideToolbarToggle.addActionListener(e ->
@@ -733,10 +862,273 @@ public class FarmRootPanel extends PluginPanel
         content.add(refreshBtn);
         content.add(hideToolbarToggle);
 
-        toolbarRow.add(content, BorderLayout.CENTER);
+        this.patchesToolbarContent = content;
+        toolbarCards.add(content, TOOLBAR_CARD_PATCHES);
 
+        // Routes toolbar (R3b): session controls (tracking/guidance only; no automation).
+        JPanel routesToolbar = new JPanel();
+        routesToolbar.setOpaque(false);
+        routesToolbar.setLayout(new ToolbarButtonRowLayout());
+
+        JButton playBtn = new JButton("▶");
+        playBtn.getAccessibleContext().setAccessibleName("Start route");
+        playBtn.setToolTipText(tooltip.apply("Start tracking", "Start tracking the selected route"));
+        styleButton.accept(playBtn);
+
+        JButton pauseBtn = new JButton("❚❚");
+        pauseBtn.getAccessibleContext().setAccessibleName("Pause route");
+        pauseBtn.setToolTipText(tooltip.apply("Pause tracking", "Pause tracking the active route"));
+        styleButton.accept(pauseBtn);
+
+        JButton stopBtn = new JButton("■");
+        stopBtn.getAccessibleContext().setAccessibleName("Stop route");
+        stopBtn.setToolTipText(tooltip.apply("Stop tracking", "Stop tracking the active route"));
+        styleButton.accept(stopBtn);
+
+        JButton newRouteBtn = new JButton("+");
+        newRouteBtn.getAccessibleContext().setAccessibleName("New route");
+        newRouteBtn.setToolTipText(tooltip.apply("New route", "Create a new route"));
+        styleButton.accept(newRouteBtn);
+
+        // Parity actions from Patches toolbar (low rewiring): reorder toggle + collapse/expand all.
+        JToggleButton routesReorderTgl = new JToggleButton("R");
+        routesReorderTgl.getAccessibleContext().setAccessibleName("Reorder");
+        routesReorderTgl.setToolTipText(tooltip.apply("Reorder", "Enable drag reordering"));
+        styleButton.accept(routesReorderTgl);
+        applyToolbarGlyph.accept(routesReorderTgl, "reorder_drag");
+
+        JButton routesCollapseExpandBtn = new JButton("C");
+        routesCollapseExpandBtn.getAccessibleContext().setAccessibleName("Collapse / expand");
+        routesCollapseExpandBtn.setToolTipText(tooltip.apply("Collapse / expand", "Collapse or expand routes"));
+        styleButton.accept(routesCollapseExpandBtn);
+        applyToolbarGlyph.accept(routesCollapseExpandBtn, "collapse_expand");
+
+        playBtn.addActionListener(e ->
+        {
+            if (FarmRootPanel.this.routesPanel != null)
+            {
+                FarmRootPanel.this.routesPanel.startSelectedRoute();
+            }
+            refreshRoutesToolbar.run();
+        });
+
+        pauseBtn.addActionListener(e ->
+        {
+            if (FarmRootPanel.this.routesPanel != null)
+            {
+                FarmRootPanel.this.routesPanel.pauseActiveRoute();
+            }
+            refreshRoutesToolbar.run();
+        });
+
+        stopBtn.addActionListener(e ->
+        {
+            if (FarmRootPanel.this.routesPanel != null)
+            {
+                FarmRootPanel.this.routesPanel.stopActiveRoute();
+            }
+            refreshRoutesToolbar.run();
+        });
+
+        newRouteBtn.addActionListener(e ->
+        {
+            if (FarmRootPanel.this.routesPanel != null)
+            {
+                FarmRootPanel.this.routesPanel.promptCreateRoute();
+            }
+            refreshRoutesToolbar.run();
+        });
+
+        routesReorderTgl.addActionListener(e ->
+        {
+            if (FarmRootPanel.this.routesPanel != null)
+            {
+                // Contract: reorder UI is disabled while filtering.
+                if (FarmRootPanel.this.routesPanel.isFilterActive())
+                {
+                    routesReorderTgl.setSelected(false);
+                    FarmRootPanel.this.routesPanel.setReorderModeEnabled(false);
+                }
+                else
+                {
+                    FarmRootPanel.this.routesPanel.setReorderModeEnabled(routesReorderTgl.isSelected());
+                }
+            }
+            refreshRoutesToolbar.run();
+        });
+
+        routesCollapseExpandBtn.addActionListener(e ->
+        {
+            if (FarmRootPanel.this.routesPanel != null)
+            {
+                FarmRootPanel.this.routesPanel.toggleCollapseExpandAll();
+            }
+            refreshRoutesToolbar.run();
+        });
+
+        routesToolbar.add(playBtn);
+        routesToolbar.add(pauseBtn);
+        routesToolbar.add(stopBtn);
+        routesToolbar.add(routesReorderTgl);
+        routesToolbar.add(routesCollapseExpandBtn);
+        routesToolbar.add(newRouteBtn);
+
+        this.routesToolbarContent = routesToolbar;
+
+        this.refreshRoutesToolbar = () ->
+        {
+            if (FarmRootPanel.this.routesPanel == null)
+            {
+                playBtn.setEnabled(false);
+                pauseBtn.setEnabled(false);
+                stopBtn.setEnabled(false);
+                newRouteBtn.setEnabled(false);
+                return;
+            }
+
+            boolean hasSelected = FarmRootPanel.this.routesPanel.hasSelectedRoute();
+            boolean hasActive = FarmRootPanel.this.routesPanel.hasActiveRoute();
+            boolean activeRunning = FarmRootPanel.this.routesPanel.isActiveRunning();
+            boolean activePaused = FarmRootPanel.this.routesPanel.isActivePaused();
+
+            boolean filterActive = FarmRootPanel.this.routesPanel.isFilterActive();
+            boolean reorderEnabled = FarmRootPanel.this.routesPanel.isReorderModeEnabled();
+
+            playBtn.setEnabled(hasSelected);
+            pauseBtn.setEnabled(hasActive && activeRunning);
+            stopBtn.setEnabled(hasActive);
+            newRouteBtn.setEnabled(true);
+
+            // Reorder toggle is available only when not filtering.
+            routesReorderTgl.setEnabled(!filterActive);
+            routesReorderTgl.setSelected(!filterActive && reorderEnabled);
+            routesReorderTgl.setToolTipText(tooltip.apply(
+                    "Reorder",
+                    filterActive ? "Disabled while filtering" : "Enable drag reordering"));
+
+            // Collapse/expand all: disabled while reordering or filtering.
+            boolean canCollapseExpand = FarmRootPanel.this.routesPanel.canCollapseExpandAll();
+            routesCollapseExpandBtn.setEnabled(canCollapseExpand);
+            routesCollapseExpandBtn.setToolTipText(tooltip.apply(
+                    FarmRootPanel.this.routesPanel.willCollapseAll() ? "Collapse all" : "Expand all",
+                    filterActive ? "Disabled while filtering"
+                            : (reorderEnabled ? "Disabled while reordering" : "Collapse or expand all routes")));
+
+            playBtn.setToolTipText(tooltip.apply(
+                    activePaused && hasSelected ? "Resume tracking" : "Start tracking",
+                    "Start tracking the selected route"));
+        };
+
+        toolbarCards.add(routesToolbar, TOOLBAR_CARD_ROUTES);
+
+        // Establish a conservative default height; actual height is derived from the visible card.
         toolbarRow.setPreferredSize(new Dimension(1, 28));
         toolbarRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+
+        // Recompute height whenever the toolbar row is resized (e.g. panel width changes).
+        toolbarRow.addComponentListener(new java.awt.event.ComponentAdapter()
+        {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e)
+            {
+                updateToolbarRowHeight();
+            }
+        });
+    }
+
+    /**
+     * Layout for the toolbar button row: equal-width columns and full-height buttons.
+     * Height is controlled by updateToolbarRowHeight() at the root level.
+     */
+    private final class ToolbarButtonRowLayout implements LayoutManager
+    {
+        @Override public void addLayoutComponent(String name, Component comp) {}
+        @Override public void removeLayoutComponent(Component comp) {}
+
+        @Override
+        public Dimension preferredLayoutSize(Container parent)
+        {
+            // Height is set at the toolbar row; this is just a safe fallback during first layout.
+            return new Dimension(1, Math.max(18, toolbarRow.getPreferredSize().height));
+        }
+
+        @Override
+        public Dimension minimumLayoutSize(Container parent)
+        {
+            return preferredLayoutSize(parent);
+        }
+
+        @Override
+        public void layoutContainer(Container parent)
+        {
+            int count = parent.getComponentCount();
+            if (count <= 0)
+            {
+                return;
+            }
+
+            int w = parent.getWidth();
+            int h = parent.getHeight();
+            if (w <= 0)
+            {
+                return;
+            }
+
+            int base = w / count;
+            int rem = w % count;
+
+            int x = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int extra = (i < rem) ? 1 : 0;
+                int bw = base + extra;
+                Component c = parent.getComponent(i);
+                c.setBounds(x, 0, bw, h);
+                x += bw;
+            }
+        }
+    }
+
+    private void updateToolbarRowHeight()
+    {
+        if (!isChromeMode(current) || !toolbarRow.isVisible())
+        {
+            return;
+        }
+
+        JPanel panel = (current == Mode.ROUTES) ? routesToolbarContent : patchesToolbarContent;
+        if (panel == null)
+        {
+            return;
+        }
+
+        int count = panel.getComponentCount();
+        if (count <= 0)
+        {
+            return;
+        }
+
+        int w = toolbarRow.getWidth();
+        if (w <= 0)
+        {
+            w = chrome.getWidth();
+        }
+        if (w <= 0)
+        {
+            return;
+        }
+
+        int targetH = Math.max(18, w / count);
+        if (toolbarRow.getPreferredSize().height == targetH)
+        {
+            return;
+        }
+
+        toolbarRow.setPreferredSize(new Dimension(1, targetH));
+        toolbarRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, targetH));
+        toolbarRow.revalidate();
+        chrome.revalidate();
+        toolbarRow.repaint();
     }
 
 
@@ -755,11 +1147,35 @@ public class FarmRootPanel extends PluginPanel
 
     private void applyToolbarHiddenState()
     {
-        boolean patchesActive = (current == Mode.PATCHES);
-        boolean hidden = uiStateStore != null && uiStateStore.isToolbarHidden();
+        if (!isChromeMode(current))
+        {
+            toolbarRow.setVisible(false);
+            restoreToolbarButton.setVisible(false);
+            return;
+        }
 
-        toolbarRow.setVisible(patchesActive && !hidden);
-        restoreToolbarButton.setVisible(patchesActive && hidden);
+        if (current == Mode.ROUTES)
+        {
+            toolbarCardLayout.show(toolbarCards, TOOLBAR_CARD_ROUTES);
+            toolbarRow.setVisible(true);
+            restoreToolbarButton.setVisible(false);
+
+            // Routes toolbar has no hide/show state yet.
+            refreshRoutesToolbar.run();
+
+            // Ensure toolbar height matches the visible card immediately after the switch.
+            SwingUtilities.invokeLater(this::updateToolbarRowHeight);
+            chrome.revalidate();
+            chrome.repaint();
+            return;
+        }
+
+        // PATCHES
+        toolbarCardLayout.show(toolbarCards, TOOLBAR_CARD_PATCHES);
+
+        boolean hidden = uiStateStore != null && uiStateStore.isToolbarHidden();
+        toolbarRow.setVisible(!hidden);
+        restoreToolbarButton.setVisible(hidden);
 
         if (hideToolbarToggle != null && hideToolbarToggle.isSelected() != hidden)
         {
@@ -767,6 +1183,7 @@ public class FarmRootPanel extends PluginPanel
         }
 
         // Keep BoxLayout from leaving stale space.
+        SwingUtilities.invokeLater(this::updateToolbarRowHeight);
         chrome.revalidate();
         chrome.repaint();
     }
@@ -816,11 +1233,30 @@ public class FarmRootPanel extends PluginPanel
         filterField.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
 
         int padY = Math.max(4, Math.round(6 * scale));
-        int padX = Math.max(6, Math.round(8 * scale));
-        filterField.setBorder(BorderFactory.createEmptyBorder(padY, padX, padY, padX));
+        // Important: keep the left inset tight so the placeholder text aligns with other chrome
+        // elements (nav + list content). Right inset stays roomier so the field doesn't feel cramped.
+        int padLeftX = Math.max(2, Math.round(2 * scale));
+        int padRightX = Math.max(6, Math.round(8 * scale));
+
+        javax.swing.Icon searchIcon = null;
+        if (config.showFilterSearchIcon())
+        {
+            // Pick the largest provided asset that fits comfortably within the field height.
+            int maxPx = Math.max(12, h - Math.round(10 * scale));
+            int px = (maxPx >= 64) ? 64 : (maxPx >= 28) ? 28 : 16;
+            BufferedImage img = loadToolbarImage("search", px);
+            if (img != null)
+            {
+                searchIcon = new ForegroundTintIcon(img);
+            }
+        }
+
+        // More breathing room between the glyph and text, especially at 16px.
+        int iconGap = Math.max(6, Math.round(6 * scale));
+        filterField.setBorder(new LeftIconBorder(padY, padLeftX, padY, padRightX, searchIcon, iconGap));
 
         // Keep placeholder styling correct
-        if (FILTER_PLACEHOLDER.equals(filterField.getText()))
+        if (isFilterPlaceholder(filterField.getText()))
         {
             filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
         }
@@ -854,7 +1290,8 @@ public class FarmRootPanel extends PluginPanel
 
         nav.setOpaque(true);
         nav.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        nav.setBorder(new EmptyBorder(6, 6, 6, 6));
+        // Slightly reduce bottom padding so the filter row sits closer to the nav.
+        nav.setBorder(new EmptyBorder(6, 6, 2, 6));
         nav.setLayout(new GridBagLayout());
 
         NavContent content = config.navContent();
@@ -1025,19 +1462,43 @@ public class FarmRootPanel extends PluginPanel
             btn.setSelected(true);
         }
 
-        boolean patchesActive = (mode == Mode.PATCHES);
-        setPatchesChromeVisible(patchesActive);
+        boolean nextChrome = isChromeMode(mode);
+        setPatchesChromeVisible(nextChrome);
 
-        if (prev == Mode.PATCHES && !patchesActive)
+        // Switching away from a chrome mode: clear and return focus to game.
+        if (isChromeMode(prev) && !nextChrome)
         {
-            // Leaving patches: clear filter + return focus to game.
-            filterField.setText(FILTER_PLACEHOLDER);
+            filterField.setText(placeholderFor(Mode.PATCHES));
             filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-            farmPanel.setFilterText("");
+            if (prev == Mode.PATCHES)
+            {
+                farmPanel.setFilterText("");
+            }
             clientUI.forceFocus();
         }
 
+        // Switching between chrome modes (or entering a chrome mode): reset placeholder for the target mode.
+        if (nextChrome && prev != mode)
+        {
+            filterField.setText(placeholderFor(mode));
+            filterField.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+
+            if (prev == Mode.PATCHES && mode != Mode.PATCHES)
+            {
+                // Preserve existing behavior: leaving patches clears its filter and refocuses the game.
+                farmPanel.setFilterText("");
+                clientUI.forceFocus();
+            }
+        }
+
         cardLayout.show(cards, mode.name());
+
+        // Ensure Routes reflects any store changes that could have occurred while the tab was hidden
+        // (e.g. adding patches to routes from the Patches context menu).
+        if (mode == Mode.ROUTES && routesPanel != null && prev != Mode.ROUTES)
+        {
+            routesPanel.refreshFromStore();
+        }
 
         cards.revalidate();
         cards.repaint();
@@ -1057,10 +1518,27 @@ public class FarmRootPanel extends PluginPanel
         buildNav();              // <-- this is what you were missing
         applyFilterSizing();
         applyToolbarBackground();
+        refreshActivePanelFromConfig();
         revalidate();
         repaint();
     }
 
+    /**
+     * Refresh only the active content panel in response to config changes.
+     * Keeps Routes consistent with Patches (immediate application while visible).
+     */
+    public void refreshActivePanelFromConfig()
+    {
+        if (current == Mode.ROUTES && routesPanel != null)
+        {
+            routesPanel.refreshUiFromConfig();
+        }
+    }
+
+    public boolean isRoutesActive()
+    {
+        return current == Mode.ROUTES;
+    }
 
     public void resetToDefault()
     {
@@ -1091,6 +1569,33 @@ public class FarmRootPanel extends PluginPanel
         java.net.URL url = FarmRootPanel.class.getResource(path);
         return url == null ? null : new javax.swing.ImageIcon(url);
     }
+
+    private javax.swing.Icon loadToolbarIcon(String key, int px)
+    {
+        String path = "/toolbar/" + px + "/" + key + ".png";
+        java.net.URL url = FarmRootPanel.class.getResource(path);
+        return url == null ? null : new javax.swing.ImageIcon(url);
+    }
+
+    private BufferedImage loadToolbarImage(String key, int px)
+    {
+        String path = "/toolbar/" + px + "/" + key + ".png";
+        java.net.URL url = FarmRootPanel.class.getResource(path);
+        if (url == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return ImageIO.read(url);
+        }
+        catch (IOException e)
+        {
+            return null;
+        }
+    }
+
 
     private MouseWheelListener globalScrollListener;
 
@@ -1152,7 +1657,7 @@ public class FarmRootPanel extends PluginPanel
         findDispatcher = e ->
         {
             if (!isShowing()) return false;
-            if (current != Mode.PATCHES) return false;
+            if (!isChromeMode(current)) return false;
             if (e.getID() != KeyEvent.KEY_PRESSED) return false;
 
             if (e.getKeyCode() == KeyEvent.VK_F && (e.getModifiersEx() & menuMask) == menuMask)
@@ -1164,7 +1669,7 @@ public class FarmRootPanel extends PluginPanel
                 else
                 {
                     filterField.requestFocusInWindow();
-                    if (FILTER_PLACEHOLDER.equals(filterField.getText()))
+                    if (isFilterPlaceholder(filterField.getText()))
                     {
                         filterField.setText("");
                         filterField.setForeground(ColorScheme.TEXT_COLOR);
@@ -1193,7 +1698,7 @@ public class FarmRootPanel extends PluginPanel
     {
         AWTEventListener listener = event ->
         {
-            if (current != Mode.PATCHES) return;
+            if (!isChromeMode(current)) return;
             if (!(event instanceof MouseEvent)) return;
 
             MouseEvent me = (MouseEvent) event;

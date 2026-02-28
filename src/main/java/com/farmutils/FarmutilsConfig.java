@@ -167,6 +167,18 @@ public interface FarmutilsConfig extends Config
         return false;
     }
 
+    @ConfigItem(
+            keyName = "showFilterSearchIcon",
+            name = "Filter search icon",
+            description = "Show a magnifying glass icon inside the filter box.",
+            position = 9,
+            section = appearanceSection
+    )
+    default boolean showFilterSearchIcon()
+    {
+        return true;
+    }
+
 enum SelectionOutlineColor
     {
         WHITE,
