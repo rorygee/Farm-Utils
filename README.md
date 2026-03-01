@@ -1,6 +1,8 @@
 # Farm Utils
 
-<img src="assets/logo.png" width="180" alt="Farm Utils logo" />
+<p align="center">
+  <img src="assets/logo.png" width="260" alt="Farm Utils logo" />
+</p>
 
 Farm Utils is a restrained RuneLite plugin for observing and organizing farming patch state in Old School RuneScape.
 
