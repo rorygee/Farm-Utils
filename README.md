@@ -12,7 +12,9 @@ It focuses on visibility and interaction surface rather than optimization. It do
 
 ## Patches Panel
 
-<img src="assets/patches-panel.png" width="420" alt="Patches Panel" />
+<a href="assets/patches-panel.png">
+  <img src="assets/patches-panel.png" height="520" alt="Patches Panel (click to view full size)" />
+</a>
 
 The Patches panel presents your patch list as a manipulable surface:
 
@@ -26,13 +28,17 @@ The Patches panel presents your patch list as a manipulable surface:
 
 ### Free text
 
-![Filter (basic)](assets/filter-basic.png)
+<a href="assets/filter-basic.png">
+  <img src="assets/filter-basic.png" height="260" alt="Filter (basic) (click to view full size)" />
+</a>
 
 Typing plain text filters across common fields (location, patch type, etc.).
 
 ### Fielded queries
 
-![Filter (fielded)](assets/filter-fielded.png)
+<a href="assets/filter-fielded.png">
+  <img src="assets/filter-fielded.png" height="260" alt="Filter (fielded) (click to view full size)" />
+</a>
 
 Farm Utils also supports a compact, chainable filter syntax:
 
@@ -52,7 +58,9 @@ Examples:
 
 ## Selection & Reordering
 
-![Multi-selection](assets/tree-multiselect.png)
+<a href="assets/tree-multiselect.png">
+  <img src="assets/tree-multiselect.png" height="520" alt="Multi-selection (click to view full size)" />
+</a>
 
 The panel supports runtime-only multi-selection with standard semantics:
 
@@ -69,7 +77,9 @@ Where structurally valid, patches and groups can be reordered (also runtime-only
 
 ## Context Menu
 
-![Context Menu](assets/context-menu.png)
+<a href="assets/context-menu.png">
+  <img src="assets/context-menu.png" height="520" alt="Context menu (click to view full size)" />
+</a>
 
 Most per-patch actions live on the right-click menu:
 
@@ -82,7 +92,9 @@ Most per-patch actions live on the right-click menu:
 
 ## Patch Highlights
 
-![In-world highlights](assets/highlight-overlay.png)
+<a href="assets/highlight-overlay.png">
+  <img src="assets/highlight-overlay.png" width="900" alt="In-world highlights (click to view full size)" />
+</a>
 
 Patch highlighting is **swatch-slot based**:
 
@@ -100,7 +112,9 @@ Current limitations:
 
 ## Routes Panel
 
-<img src="assets/routes-panel.png" width="420" alt="Routes Panel" />
+<a href="assets/routes-panel.png">
+  <img src="assets/routes-panel.png" height="520" alt="Routes Panel (click to view full size)" />
+</a>
 
 Routes are intended as **runtime-only grouping** / **lightweight planning**:
 
@@ -112,7 +126,9 @@ Routes are intended as **runtime-only grouping** / **lightweight planning**:
 
 ## Configuration
 
-![Colours config](assets/colours-config.png)
+<a href="assets/colours-config.png">
+  <img src="assets/colours-config.png" height="460" alt="Colours config (click to view full size)" />
+</a>
 
 Farm Utils exposes a handful of UI-focused configuration options, including:
 
@@ -162,5 +178,5 @@ Farm Utils is a local tool. Client-side state remains the source of truth.
 
 - Most **standard** farming patches are supported and safe to advertise.
 - “Special” cases (Hespori/Tithe/CoX/etc.) are intentionally out of scope for the first release.
-- Quest patches exist, but are still being verified and can be hidden via **Content → Hide quest patches**.
+- Quest patches exist, but are still being verified and can be hidden if you want a cleaner surface.
 - Some locations may show **Unknown** until verified (notably a few edge locations like Prifddinas / Harmony Island herbs).
