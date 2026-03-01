@@ -13,6 +13,35 @@ public final class RouteSessionStore
 {
     private RouteSession active;
 
+    /**
+     * Advance the active session cursor by one, bounded to the provided route size.
+     *
+     * <p>Returns true if the cursor changed.</p>
+     */
+    public synchronized boolean advanceCursor(final int routeSize)
+    {
+        if (active == null)
+        {
+            return false;
+        }
+        if (routeSize <= 0)
+        {
+            return false;
+        }
+
+        final int current = active.getCursorIndex();
+        final int maxIndex = routeSize - 1;
+        final int clamped = Math.max(0, Math.min(maxIndex, current));
+        final int next = clamped + 1;
+        if (next > maxIndex)
+        {
+            return false;
+        }
+
+        active = active.withCursor(next, Instant.now());
+        return true;
+    }
+
     public synchronized Optional<RouteId> getActiveRouteId()
     {
         return active == null ? Optional.empty() : Optional.of(active.getRouteId());

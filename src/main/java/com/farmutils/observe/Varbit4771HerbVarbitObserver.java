@@ -193,13 +193,14 @@ public class Varbit4771HerbVarbitObserver
 
 		if (!cur.isEmpty() && cur.getHealth() == PatchHealth.HEALTHY && cur.getStage() >= 1)
 		{
+			final Integer maxStageOrNull = 5;
 		    if (stageTickTransition)
 		    {
-		        inferenceEngine.onObservation(Observation.growthStageTransition(patch, cur.getStage(), now, ObservationSource.VARBIT));
+		        inferenceEngine.onObservation(Observation.growthStageTransition(patch, cur.getStage(), maxStageOrNull, now, ObservationSource.VARBIT));
 		    }
 		    else
 		    {
-		        inferenceEngine.onObservation(Observation.growthStageObserved(patch, cur.getStage(), now, ObservationSource.VARBIT));
+		        inferenceEngine.onObservation(Observation.growthStageObserved(patch, cur.getStage(), maxStageOrNull, now, ObservationSource.VARBIT));
 		    }
 
 		    Integer cropItemId = cur.getCropItemIdOrNull();

@@ -25,13 +25,7 @@ public final class StandardAllotmentSlotDecoder
     private static final int[][] WEED_RANGES = new int[][]
     {
         {0, 5},
-        {74, 76},
-        {81, 83},
-        {88, 90},
-        {95, 97},
-        {104, 106},
-        {113, 115},
-        {124, 127},
+        {127, 127},
         {141, 141},
         {145, 148},
         {152, 155},
@@ -97,7 +91,7 @@ public final class StandardAllotmentSlotDecoder
         // Potato
         DecodedPatchState potato = decodeHealthyCrop(raw, AllotmentType.POTATO,
             new int[][]{{6, 9}, {70, 73}},
-            new int[][]{{10, 12}});
+            new int[][]{{10, 12}, {74, 76}});
         if (potato != null)
         {
             return potato;
@@ -106,7 +100,7 @@ public final class StandardAllotmentSlotDecoder
         // Onion
         DecodedPatchState onion = decodeHealthyCrop(raw, AllotmentType.ONION,
             new int[][]{{13, 16}, {77, 80}},
-            new int[][]{{17, 19}});
+            new int[][]{{17, 19}, {81, 83}});
         if (onion != null)
         {
             return onion;
@@ -115,7 +109,7 @@ public final class StandardAllotmentSlotDecoder
         // Cabbage
         DecodedPatchState cabbage = decodeHealthyCrop(raw, AllotmentType.CABBAGE,
             new int[][]{{20, 23}, {84, 87}},
-            new int[][]{{24, 26}});
+            new int[][]{{24, 26}, {88, 90}});
         if (cabbage != null)
         {
             return cabbage;
@@ -124,7 +118,7 @@ public final class StandardAllotmentSlotDecoder
         // Tomato
         DecodedPatchState tomato = decodeHealthyCrop(raw, AllotmentType.TOMATO,
             new int[][]{{27, 30}, {91, 94}},
-            new int[][]{{31, 33}});
+            new int[][]{{31, 33}, {95, 97}});
         if (tomato != null)
         {
             return tomato;
@@ -133,7 +127,7 @@ public final class StandardAllotmentSlotDecoder
         // Sweetcorn
         DecodedPatchState sweetcorn = decodeHealthyCrop(raw, AllotmentType.SWEETCORN,
             new int[][]{{34, 39}, {98, 103}},
-            new int[][]{{40, 42}});
+            new int[][]{{40, 42}, {104, 106}});
         if (sweetcorn != null)
         {
             return sweetcorn;
@@ -142,7 +136,7 @@ public final class StandardAllotmentSlotDecoder
         // Strawberry
         DecodedPatchState strawberry = decodeHealthyCrop(raw, AllotmentType.STRAWBERRY,
             new int[][]{{43, 48}, {107, 112}},
-            new int[][]{{49, 51}});
+            new int[][]{{49, 51}, {113, 115}});
         if (strawberry != null)
         {
             return strawberry;
@@ -151,7 +145,7 @@ public final class StandardAllotmentSlotDecoder
         // Watermelon
         DecodedPatchState watermelon = decodeHealthyCrop(raw, AllotmentType.WATERMELON,
             new int[][]{{52, 59}, {116, 123}},
-            new int[][]{{60, 62}});
+            new int[][]{{60, 62}, {124, 126}});
         if (watermelon != null)
         {
             return watermelon;

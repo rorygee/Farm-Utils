@@ -40,6 +40,15 @@ public class Varbit4774HerbVarbitObserver
 
     static final int MAX_ATTRIBUTION_DISTANCE_TILES = 48;
 
+	/**
+	 * Fallback attribution table (patch -> anchor).
+	 *
+	 * <p>We primarily attribute by region id for performance, but region boundaries can cut through
+	 * a farming area. When that happens, the region-id map is insufficient and we fall back to a
+	 * nearest-anchor lookup within the same distance gate.</p>
+	 */
+	private static final Map<PatchId, WorldPoint> PATCH_TO_ANCHOR = new HashMap<>();
+
     private final Client client;
     private final InferenceEngine inferenceEngine;
 
@@ -156,20 +165,16 @@ public class Varbit4774HerbVarbitObserver
 
         final WorldPoint anchor = REGION_ID_TO_ANCHOR.get(regionId);
         final PatchId patch = REGION_ID_TO_PATCH.get(regionId);
-        if (anchor == null || patch == null)
-        {
-			// This observer is intentionally region-bound. Unmapped regions are expected and not actionable.
-			// Keep this at trace to avoid confusing normal debug logs when standing in unrelated regions.
-			log.trace("[varbit] v{} unknown regionId={} at {} (unmapped herb patch region)", VARBIT_ID, regionId, wp);
-            return null;
-        }
+		if (anchor != null && patch != null)
+		{
+			if (wp.getPlane() == anchor.getPlane() && wp.distanceTo2D(anchor) <= MAX_ATTRIBUTION_DISTANCE_TILES)
+			{
+				return patch;
+			}
+		}
 
-        if (wp.distanceTo(anchor) > MAX_ATTRIBUTION_DISTANCE_TILES)
-        {
-            return null;
-        }
-
-        return patch;
+		// Region-id lookup failed (or we are on a boundary). Fall back to deterministic proximity attribution.
+		return PatchAttribution.byNearestAnchor(wp, PATCH_TO_ANCHOR, MAX_ATTRIBUTION_DISTANCE_TILES);
     }
 
 	private void emitTransitions(final PatchId patch, final DecodedPatchState prev, final DecodedPatchState cur, final int prevRaw, final int raw, final Instant now)
@@ -233,13 +238,14 @@ public class Varbit4774HerbVarbitObserver
 
 		if (!cur.isEmpty() && cur.getHealth() == PatchHealth.HEALTHY && cur.getStage() >= 1)
 		{
+			final Integer maxStageOrNull = 5;
 		    if (stageTickTransition)
 		    {
-		        inferenceEngine.onObservation(Observation.growthStageTransition(patch, cur.getStage(), now, ObservationSource.VARBIT));
+		        inferenceEngine.onObservation(Observation.growthStageTransition(patch, cur.getStage(), maxStageOrNull, now, ObservationSource.VARBIT));
 		    }
 		    else
 		    {
-		        inferenceEngine.onObservation(Observation.growthStageObserved(patch, cur.getStage(), now, ObservationSource.VARBIT));
+		        inferenceEngine.onObservation(Observation.growthStageObserved(patch, cur.getStage(), maxStageOrNull, now, ObservationSource.VARBIT));
 		    }
 
 		    Integer cropItemId = cur.getCropItemIdOrNull();
@@ -270,22 +276,27 @@ public class Varbit4774HerbVarbitObserver
         // Falador
         REGION_ID_TO_PATCH.put(FALADOR_ANCHOR.getRegionID(), PatchId.HERB_FALADOR);
         REGION_ID_TO_ANCHOR.put(FALADOR_ANCHOR.getRegionID(), FALADOR_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.HERB_FALADOR, FALADOR_ANCHOR);
 
         // Catherby
         REGION_ID_TO_PATCH.put(CATHERBY_ANCHOR.getRegionID(), PatchId.HERB_CATHERBY);
         REGION_ID_TO_ANCHOR.put(CATHERBY_ANCHOR.getRegionID(), CATHERBY_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.HERB_CATHERBY, CATHERBY_ANCHOR);
 
         // Ardougne
         REGION_ID_TO_PATCH.put(ARDOUGNE_ANCHOR.getRegionID(), PatchId.HERB_ARDOUGNE);
         REGION_ID_TO_ANCHOR.put(ARDOUGNE_ANCHOR.getRegionID(), ARDOUGNE_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.HERB_ARDOUGNE, ARDOUGNE_ANCHOR);
 
         // Port Phasmatys
         REGION_ID_TO_PATCH.put(PHASMATYS_ANCHOR.getRegionID(), PatchId.HERB_PORT_PHASMATYS);
         REGION_ID_TO_ANCHOR.put(PHASMATYS_ANCHOR.getRegionID(), PHASMATYS_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.HERB_PORT_PHASMATYS, PHASMATYS_ANCHOR);
 
         // Hosidius
         REGION_ID_TO_PATCH.put(HOSIDIUS_ANCHOR.getRegionID(), PatchId.HERB_HOSIDIUS);
         REGION_ID_TO_ANCHOR.put(HOSIDIUS_ANCHOR.getRegionID(), HOSIDIUS_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.HERB_HOSIDIUS, HOSIDIUS_ANCHOR);
 
         // Civitas illa Fortis (Varlamore)
         // RuneLite Time Tracking registers this farming area under multiple adjacent regions.
@@ -300,6 +311,7 @@ public class Varbit4774HerbVarbitObserver
             REGION_ID_TO_PATCH.put(regionId, PatchId.HERB_CIVITAS_ILLA_FORTIS);
             REGION_ID_TO_ANCHOR.put(regionId, CIVITAS_ILLA_FORTIS_ANCHOR);
         }
+		PATCH_TO_ANCHOR.put(PatchId.HERB_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
 
     }
 

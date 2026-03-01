@@ -42,6 +42,9 @@ public class Varbit4773FlowerVarbitObserver
 
     static final int MAX_ATTRIBUTION_DISTANCE_TILES = 48;
 
+    /** Deterministic fallback attribution (patch -> anchor) for region-boundary cases. */
+    private static final Map<PatchId, WorldPoint> PATCH_TO_ANCHOR = new HashMap<>();
+
     private final Client client;
     private final InferenceEngine inferenceEngine;
 
@@ -180,13 +183,14 @@ public class Varbit4773FlowerVarbitObserver
     {
         if (!cur.isEmpty() && cur.getHealth() == PatchHealth.HEALTHY && cur.getStage() >= 1)
         {
+            final Integer maxStageOrNull = 5;
             if (stageTickTransition)
             {
-                inferenceEngine.onObservation(Observation.growthStageTransition(patch, cur.getStage(), now, ObservationSource.VARBIT));
+                inferenceEngine.onObservation(Observation.growthStageTransition(patch, cur.getStage(), maxStageOrNull, now, ObservationSource.VARBIT));
             }
             else
             {
-                inferenceEngine.onObservation(Observation.growthStageObserved(patch, cur.getStage(), now, ObservationSource.VARBIT));
+                inferenceEngine.onObservation(Observation.growthStageObserved(patch, cur.getStage(), maxStageOrNull, now, ObservationSource.VARBIT));
             }
 
             Integer cropItemId = cur.getCropItemIdOrNull();
@@ -231,29 +235,19 @@ public class Varbit4773FlowerVarbitObserver
         }
 
         final int regionId = wp.getRegionID();
+
         final PatchId patch = REGION_ID_TO_PATCH.get(regionId);
-        if (patch == null)
-        {
-            return null;
-        }
-
         final WorldPoint anchor = REGION_ID_TO_ANCHOR.get(regionId);
-        if (anchor == null)
+        if (patch != null && anchor != null)
         {
-            return null;
+            if (wp.getPlane() == anchor.getPlane() && wp.distanceTo2D(anchor) <= MAX_ATTRIBUTION_DISTANCE_TILES)
+            {
+                return patch;
+            }
         }
 
-        if (wp.getPlane() != anchor.getPlane())
-        {
-            return null;
-        }
-
-        if (wp.distanceTo2D(anchor) > MAX_ATTRIBUTION_DISTANCE_TILES)
-        {
-            return null;
-        }
-
-        return patch;
+        // Region-id lookup failed (or we are on a boundary). Fall back to deterministic proximity attribution.
+        return PatchAttribution.byNearestAnchor(wp, PATCH_TO_ANCHOR, MAX_ATTRIBUTION_DISTANCE_TILES);
     }
 
     static PatchId patchForRegionId(int regionId)
@@ -274,12 +268,14 @@ public class Varbit4773FlowerVarbitObserver
     {
         // Ardougne (Hemenster)
         registerRegion(10548, PatchId.FLOWER_ARDOUGNE, ARDOUGNE_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_ARDOUGNE, ARDOUGNE_ANCHOR);
 
         // Catherby (+ adjacent regions)
         registerRegion(11062, PatchId.FLOWER_CATHERBY, CATHERBY_ANCHOR);
         registerRegion(11061, PatchId.FLOWER_CATHERBY, CATHERBY_ANCHOR);
         registerRegion(11318, PatchId.FLOWER_CATHERBY, CATHERBY_ANCHOR);
         registerRegion(11317, PatchId.FLOWER_CATHERBY, CATHERBY_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_CATHERBY, CATHERBY_ANCHOR);
 
         // Civitas illa Fortis (+ adjacent regions)
         registerRegion(6192, PatchId.FLOWER_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
@@ -287,18 +283,22 @@ public class Varbit4773FlowerVarbitObserver
         registerRegion(6448, PatchId.FLOWER_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
         registerRegion(6449, PatchId.FLOWER_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
         registerRegion(6191, PatchId.FLOWER_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
         registerRegion(6193, PatchId.FLOWER_CIVITAS_ILLA_FORTIS, CIVITAS_ILLA_FORTIS_ANCHOR);
 
         // Falador
         registerRegion(12083, PatchId.FLOWER_FALADOR, FALADOR_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_FALADOR, FALADOR_ANCHOR);
 
         // Hosidius (Kourend)
         registerRegion(6967, PatchId.FLOWER_HOSIDIUS, HOSIDIUS_ANCHOR);
         registerRegion(6711, PatchId.FLOWER_HOSIDIUS, HOSIDIUS_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_HOSIDIUS, HOSIDIUS_ANCHOR);
 
         // Port Phasmatys
         registerRegion(14391, PatchId.FLOWER_PORT_PHASMATYS, PHASMATYS_ANCHOR);
         registerRegion(14390, PatchId.FLOWER_PORT_PHASMATYS, PHASMATYS_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_PORT_PHASMATYS, PHASMATYS_ANCHOR);
 
         // Prifddinas (+ underground adjacency)
         registerRegion(13151, PatchId.FLOWER_PRIFDDINAS, PRIFDDINAS_ANCHOR);
@@ -312,10 +312,12 @@ public class Varbit4773FlowerVarbitObserver
         registerRegion(12126, PatchId.FLOWER_PRIFDDINAS, PRIFDDINAS_ANCHOR);
         registerRegion(12127, PatchId.FLOWER_PRIFDDINAS, PRIFDDINAS_ANCHOR);
         registerRegion(13250, PatchId.FLOWER_PRIFDDINAS, PRIFDDINAS_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_PRIFDDINAS, PRIFDDINAS_ANCHOR);
 
         // Kastori (+ adjacent regions)
         registerRegion(5423, PatchId.FLOWER_KASTORI, KASTORI_ANCHOR);
         registerRegion(5167, PatchId.FLOWER_KASTORI, KASTORI_ANCHOR);
         registerRegion(5424, PatchId.FLOWER_KASTORI, KASTORI_ANCHOR);
+        PATCH_TO_ANCHOR.put(PatchId.FLOWER_KASTORI, KASTORI_ANCHOR);
     }
 }

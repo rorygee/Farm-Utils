@@ -6,8 +6,16 @@ import com.farmutils.ui.FarmStubPanel;
 import com.farmutils.ui.RoutesPanel;
 import com.farmutils.route.RouteStore;
 import com.farmutils.route.RouteSessionStore;
+import com.farmutils.route.RouteSession;
+import com.farmutils.route.RouteSessionState;
+import com.farmutils.route.Route;
 import com.farmutils.storage.UiStateStore;
 import com.farmutils.infer.InferenceEngine;
+import com.farmutils.model.PatchId;
+import com.farmutils.model.PatchRecord;
+import com.farmutils.model.PatchSource;
+import com.farmutils.model.PatchState;
+import com.farmutils.model.PatchView;
 import com.farmutils.observe.Varbit4771AllotmentVarbitObserver;
 import com.farmutils.observe.Varbit4771BelladonnaVarbitObserver;
 import com.farmutils.observe.Varbit4771BushVarbitObserver;
@@ -126,6 +134,13 @@ public class FarmutilsPlugin extends Plugin
 
 	// Paint-only refresh cadence for time-driven progress (bounded to <= 1/min).
 	private long lastRepaintEpochMinute = -1;
+
+	// Route run cursor auto-advance tracking (runtime-only).
+	private com.farmutils.route.RouteId lastAutoAdvanceRouteId;
+	private int lastAutoAdvanceCursorIndex = -1;
+	private PatchId lastAutoAdvancePatchId;
+	private PatchState lastAutoAdvancePatchState;
+	private PatchSource lastAutoAdvancePatchSource;
 
 
 	@Inject
@@ -276,14 +291,19 @@ public class FarmutilsPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		routeStore = new RouteStore();
+		routeSessionStore = new RouteSessionStore();
+		farmPanel.setRouteStore(routeStore);
+
+		if (patchHighlightOverlay != null)
+		{
+			patchHighlightOverlay.setRouteContext(routeStore, routeSessionStore);
+		}
+
 		if (overlayManager != null && patchHighlightOverlay != null)
 		{
 			overlayManager.add(patchHighlightOverlay);
 		}
-
-		routeStore = new RouteStore();
-		routeSessionStore = new RouteSessionStore();
-		farmPanel.setRouteStore(routeStore);
 
 		routesPanel = new RoutesPanel(config, routeStore, routeSessionStore, farmPanel.getPatchStore(), farmPanel.getItemManager(), uiStateStore);
 
@@ -498,6 +518,10 @@ public class FarmutilsPlugin extends Plugin
 		varbit10781EnrichedSnapdragonVarbitObserver.onGameTick();
 		inferenceEngine.tick();
 
+		// Cursor progression: if the current route cursor patch transitions EMPTY -> GROWING
+		// while a session is RUNNING, advance the cursor to the next patch.
+		maybeAutoAdvanceRouteCursor();
+
 		long after = inferenceEngine.getChangeCounter();
 		if (after != before && after != lastInferenceChangeCounter)
 		{
@@ -529,6 +553,151 @@ public class FarmutilsPlugin extends Plugin
 				SwingUtilities.invokeLater(routesPanel::repaint);
 			}
 		}
+	}
+
+	private void maybeAutoAdvanceRouteCursor()
+	{
+		if (routeSessionStore == null || routeStore == null || farmPanel == null)
+		{
+			clearAutoAdvanceTracking();
+			return;
+		}
+
+		final java.util.Optional<RouteSession> sessionOpt = routeSessionStore.getActiveSession();
+		if (!sessionOpt.isPresent())
+		{
+			clearAutoAdvanceTracking();
+			return;
+		}
+
+		final RouteSession session = sessionOpt.get();
+		if (session.getState() != RouteSessionState.RUNNING)
+		{
+			// Track baseline, but do not auto-advance when paused.
+			updateAutoAdvanceBaseline(session);
+			return;
+		}
+
+		final Route route = routeStore.get(session.getRouteId()).orElse(null);
+		if (route == null || route.getPatchIds().isEmpty())
+		{
+			clearAutoAdvanceTracking();
+			return;
+		}
+
+		final int routeSize = route.getPatchIds().size();
+		final int maxIndex = routeSize - 1;
+		final int cursorIndex = Math.max(0, Math.min(maxIndex, session.getCursorIndex()));
+		final PatchId cursorPatchId = route.getPatchIds().get(cursorIndex);
+
+		final PatchView view = farmPanel.getPatchStore().view(cursorPatchId);
+		final PatchState nowState = view.getRecord().map(PatchRecord::getState).orElse(null);
+		final PatchSource nowSource = view.getSource();
+
+		// First tick for this session/cursor: establish baseline only.
+		if (lastAutoAdvanceRouteId == null
+				|| !session.getRouteId().equals(lastAutoAdvanceRouteId)
+				|| cursorIndex != lastAutoAdvanceCursorIndex
+				|| cursorPatchId != lastAutoAdvancePatchId)
+		{
+			lastAutoAdvanceRouteId = session.getRouteId();
+			lastAutoAdvanceCursorIndex = cursorIndex;
+			lastAutoAdvancePatchId = cursorPatchId;
+			lastAutoAdvancePatchState = nowState;
+			lastAutoAdvancePatchSource = nowSource;
+			return;
+		}
+
+		final boolean shouldAdvance =
+				lastAutoAdvancePatchSource == PatchSource.INFERRED
+						&& nowSource == PatchSource.INFERRED
+						&& lastAutoAdvancePatchState == PatchState.EMPTY
+						&& nowState == PatchState.GROWING;
+
+		// Update baseline before any cursor mutation (prevents double-advance on same tick).
+		lastAutoAdvancePatchState = nowState;
+		lastAutoAdvancePatchSource = nowSource;
+
+		if (!shouldAdvance)
+		{
+			return;
+		}
+
+		final boolean advanced = routeSessionStore.advanceCursor(routeSize);
+		if (!advanced)
+		{
+			// If we're already at the end of the route, treat the EMPTY -> GROWING transition
+			// as route completion and auto-stop the run.
+			if (cursorIndex >= maxIndex)
+			{
+				routeSessionStore.stopActive();
+				clearAutoAdvanceTracking();
+
+				// Session changes are not part of inferenceEngine's change counter; refresh routes UI immediately.
+				if (routesPanel != null && rootPanel != null && rootPanel.isRoutesActive())
+				{
+					routesPanel.refreshFromStore();
+					SwingUtilities.invokeLater(routesPanel::repaint);
+				}
+			}
+			return;
+		}
+
+		// Refresh baseline to the new cursor position.
+		final java.util.Optional<RouteSession> afterOpt = routeSessionStore.getActiveSession();
+		if (afterOpt.isPresent())
+		{
+			updateAutoAdvanceBaseline(afterOpt.get());
+		}
+		else
+		{
+			clearAutoAdvanceTracking();
+		}
+
+		// Cursor changes are not part of inferenceEngine's change counter; refresh routes UI immediately.
+		if (routesPanel != null && rootPanel != null && rootPanel.isRoutesActive())
+		{
+			routesPanel.refreshFromStore();
+			SwingUtilities.invokeLater(routesPanel::repaint);
+		}
+	}
+
+	private void updateAutoAdvanceBaseline(final RouteSession session)
+	{
+		if (session == null || routeStore == null || farmPanel == null)
+		{
+			clearAutoAdvanceTracking();
+			return;
+		}
+
+		final Route route = routeStore.get(session.getRouteId()).orElse(null);
+		if (route == null || route.getPatchIds().isEmpty())
+		{
+			clearAutoAdvanceTracking();
+			return;
+		}
+
+		final int routeSize = route.getPatchIds().size();
+		final int maxIndex = routeSize - 1;
+		final int cursorIndex = Math.max(0, Math.min(maxIndex, session.getCursorIndex()));
+		final PatchId cursorPatchId = route.getPatchIds().get(cursorIndex);
+		final PatchView view = farmPanel.getPatchStore().view(cursorPatchId);
+		final PatchState state = view.getRecord().map(PatchRecord::getState).orElse(null);
+
+		lastAutoAdvanceRouteId = session.getRouteId();
+		lastAutoAdvanceCursorIndex = cursorIndex;
+		lastAutoAdvancePatchId = cursorPatchId;
+		lastAutoAdvancePatchState = state;
+		lastAutoAdvancePatchSource = view.getSource();
+	}
+
+	private void clearAutoAdvanceTracking()
+	{
+		lastAutoAdvanceRouteId = null;
+		lastAutoAdvanceCursorIndex = -1;
+		lastAutoAdvancePatchId = null;
+		lastAutoAdvancePatchState = null;
+		lastAutoAdvancePatchSource = null;
 	}
 
 	@Subscribe

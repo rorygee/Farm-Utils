@@ -12,6 +12,7 @@ import net.runelite.api.ItemID;
 import net.runelite.client.util.AsyncBufferedImage;
 import com.farmutils.route.Route;
 import com.farmutils.route.RouteId;
+import com.farmutils.route.RouteSession;
 import com.farmutils.route.RouteSessionState;
 import com.farmutils.route.RouteSessionStore;
 import com.farmutils.route.RouteStore;
@@ -102,6 +103,48 @@ public class RoutesPanel extends JPanel
 		READY,
 		DISEASED,
 		DEAD
+	}
+
+	private boolean isActiveCursorPatch(final RouteId routeId, final PatchId patchId)
+	{
+		if (routeId == null || patchId == null || sessionStore == null || routeStore == null)
+		{
+			return false;
+		}
+
+		final RouteSession active = sessionStore.getActiveSession().orElse(null);
+		if (active == null)
+		{
+			return false;
+		}
+		if (!routeId.equals(active.getRouteId()))
+		{
+			return false;
+		}
+
+		final Route route = routeStore.get(routeId).orElse(null);
+		if (route == null)
+		{
+			return false;
+		}
+		final List<PatchId> ids = route.getPatchIds();
+		if (ids == null || ids.isEmpty())
+		{
+			return false;
+		}
+
+		int cursor = active.getCursorIndex();
+		if (cursor < 0)
+		{
+			cursor = 0;
+		}
+		if (cursor >= ids.size())
+		{
+			cursor = ids.size() - 1;
+		}
+
+		final PatchId current = ids.get(cursor);
+		return patchId.equals(current);
 	}
 
     public RoutesPanel(FarmutilsConfig config, RouteStore routeStore, RouteSessionStore sessionStore, PatchStore patchStore, ItemManager itemManager, UiStateStore uiStateStore)
@@ -361,6 +404,69 @@ public class RoutesPanel extends JPanel
         }
         return sessionStore.getActiveSession().map(s -> s.getState() == RouteSessionState.PAUSED).orElse(false);
     }
+
+	/**
+	 * True if the active session cursor can advance to the next patch.
+	 * Used by the Routes toolbar fast-forward control.
+	 */
+	public boolean canFastForwardCursor()
+	{
+		if (sessionStore == null)
+		{
+			return false;
+		}
+		final RouteSession active = sessionStore.getActiveSession().orElse(null);
+		if (active == null)
+		{
+			return false;
+		}
+		final Route route = routeStore.get(active.getRouteId()).orElse(null);
+		if (route == null || route.getPatchIds() == null || route.getPatchIds().isEmpty())
+		{
+			return false;
+		}
+
+		int cursor = active.getCursorIndex();
+		if (cursor < 0)
+		{
+			cursor = 0;
+		}
+		return cursor < (route.getPatchIds().size() - 1);
+	}
+
+	/**
+	 * Manual cursor advance by one. Runtime-only; does not depend on inference.
+	 */
+	public void fastForwardCursor()
+	{
+		if (sessionStore == null)
+		{
+			return;
+		}
+		final RouteSession active = sessionStore.getActiveSession().orElse(null);
+		if (active == null)
+		{
+			return;
+		}
+		final Route route = routeStore.get(active.getRouteId()).orElse(null);
+		if (route == null || route.getPatchIds() == null)
+		{
+			return;
+		}
+
+		final int size = route.getPatchIds().size();
+		if (size <= 0)
+		{
+			return;
+		}
+
+		final boolean changed = sessionStore.advanceCursor(size);
+		if (changed)
+		{
+			onUiStateChange.run();
+		}
+		rebuild();
+	}
 
     public void startSelectedRoute()
     {
@@ -1915,6 +2021,12 @@ public class RoutesPanel extends JPanel
             title.setAlignmentX(Component.LEFT_ALIGNMENT);
             title.setForeground(ColorScheme.TEXT_COLOR);
             title.setFont(UiFont.scaled(title.getFont(), scale, Font.PLAIN));
+
+            // Make the current route cursor row obvious (visual-only; no behaviour change).
+            if (isActiveCursorPatch(routeId, patchId))
+            {
+                title.setFont(title.getFont().deriveFont(Font.BOLD));
+            }
 
             String indicatorText = indicatorText(view);
             JLabel indicator = new JLabel(indicatorText);

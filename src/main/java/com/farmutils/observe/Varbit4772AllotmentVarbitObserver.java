@@ -227,28 +227,17 @@ public class Varbit4772AllotmentVarbitObserver
 
         final int regionId = wp.getRegionID();
         final PatchId patch = REGION_ID_TO_PATCH.get(regionId);
-        if (patch == null)
-        {
-            return null;
-        }
-
         final WorldPoint anchor = REGION_ID_TO_ANCHOR.get(regionId);
-        if (anchor == null)
+
+        if (patch != null && anchor != null)
         {
-            return null;
+            if (wp.getPlane() == anchor.getPlane() && wp.distanceTo2D(anchor) <= MAX_ATTRIBUTION_DISTANCE_TILES)
+            {
+                return patch;
+            }
         }
 
-        if (wp.getPlane() != anchor.getPlane())
-        {
-            return null;
-        }
-
-        if (wp.distanceTo2D(anchor) > MAX_ATTRIBUTION_DISTANCE_TILES)
-        {
-            return null;
-        }
-
-        return patch;
+        return PatchAttribution.byNearestAnchor(wp, PATCH_TO_ANCHOR, MAX_ATTRIBUTION_DISTANCE_TILES);
     }
 
     static PatchId patchForRegionId(int regionId)
@@ -258,11 +247,13 @@ public class Varbit4772AllotmentVarbitObserver
 
     private static final Map<Integer, PatchId> REGION_ID_TO_PATCH = new HashMap<>();
     private static final Map<Integer, WorldPoint> REGION_ID_TO_ANCHOR = new HashMap<>();
+    private static final Map<PatchId, WorldPoint> PATCH_TO_ANCHOR = new HashMap<>();
 
     private static void registerRegion(int regionId, PatchId patch, WorldPoint anchor)
     {
         REGION_ID_TO_PATCH.put(regionId, patch);
         REGION_ID_TO_ANCHOR.put(regionId, anchor);
+        PATCH_TO_ANCHOR.put(patch, anchor);
     }
 
     static

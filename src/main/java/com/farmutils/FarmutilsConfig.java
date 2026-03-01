@@ -271,6 +271,68 @@ enum SelectionOutlineColor
         return new Color(200, 90, 90);
     }
 
+	// --- Route run overlay colours ---
+
+	@ConfigItem(
+			keyName = "routeOverlayCurrentReadyColor",
+			name = "Route overlay: Current patch (Ready)",
+			description = "Colour used for the current route cursor patch when READY.",
+			position = 20,
+			section = coloursSection
+	)
+	default Color routeOverlayCurrentReadyColor()
+	{
+		return stateColorReady();
+	}
+
+	@ConfigItem(
+			keyName = "routeOverlayCurrentDiseasedColor",
+			name = "Route overlay: Current patch (Diseased)",
+			description = "Colour used for the current route cursor patch when DISEASED.",
+			position = 21,
+			section = coloursSection
+	)
+	default Color routeOverlayCurrentDiseasedColor()
+	{
+		return stateColorDiseased();
+	}
+
+	@ConfigItem(
+			keyName = "routeOverlayCurrentDeadColor",
+			name = "Route overlay: Current patch (Dead)",
+			description = "Colour used for the current route cursor patch when DEAD.",
+			position = 22,
+			section = coloursSection
+	)
+	default Color routeOverlayCurrentDeadColor()
+	{
+		return stateColorDead();
+	}
+
+	@ConfigItem(
+			keyName = "routeOverlayCurrentNeutralColor",
+			name = "Route overlay: Current patch (Neutral)",
+			description = "Colour used for the current route cursor patch when EMPTY/GROWING/UNKNOWN.",
+			position = 23,
+			section = coloursSection
+	)
+	default Color routeOverlayCurrentNeutralColor()
+	{
+		return new Color(230, 205, 90);
+	}
+
+	@ConfigItem(
+			keyName = "routeOverlayOtherPatchesColor",
+			name = "Route overlay: Other route patches",
+			description = "Muted colour used for non-current patches in the active route.",
+			position = 24,
+			section = coloursSection
+	)
+	default Color routeOverlayOtherPatchesColor()
+	{
+		return new Color(200, 180, 85);
+	}
+
     // --- Caret colouring ---
 
     enum ExpandedCaretMode

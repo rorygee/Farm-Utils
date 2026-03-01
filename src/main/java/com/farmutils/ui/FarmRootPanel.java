@@ -261,6 +261,14 @@ public class FarmRootPanel extends PluginPanel
     private Runnable refreshRoutesToolbar = () -> {};
     private final JButton restoreToolbarButton = new JButton("▾");
     private JToggleButton hideToolbarToggle;
+	private JToggleButton routesHideToolbarToggle;
+
+	// Runtime-only: Routes toolbar visibility (separate from Patches).
+	private boolean routesToolbarHidden = false;
+
+    // Shared: global overlay visibility control (wired in Patches; proxied in Routes).
+    private JToggleButton patchesHighlightsToggle;
+    private JToggleButton routesHighlightsToggle;
 
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new PreferredCardPanel(cardLayout);
@@ -501,10 +509,18 @@ filterField.setToolTipText("<html>"
             Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getPermanentFocusOwner();
             boolean refocusFilter = (focusOwner == filterField);
 
-            if (uiStateStore != null)
-            {
-                uiStateStore.setToolbarHidden(false);
-            }
+			if (current == Mode.ROUTES)
+			{
+				routesToolbarHidden = false;
+				if (routesHideToolbarToggle != null)
+				{
+					routesHideToolbarToggle.setSelected(false);
+				}
+			}
+			else if (uiStateStore != null)
+			{
+				uiStateStore.setToolbarHidden(false);
+			}
 
             applyToolbarHiddenState();
 
@@ -811,6 +827,8 @@ filterField.setToolTipText("<html>"
         styleButton.accept(highlightsTgl);
         applyToolbarGlyph.accept(highlightsTgl, "highlights");
 
+        this.patchesHighlightsToggle = highlightsTgl;
+
 		if (uiStateStore != null)
 		{
 			highlightsTgl.setSelected(uiStateStore.isShowHighlightsOverlay());
@@ -832,6 +850,7 @@ filterField.setToolTipText("<html>"
 				uiStateStore.setShowHighlightsOverlay(highlightsTgl.isSelected());
 			}
 			refreshHighlightsTooltip.run();
+			refreshHighlightToggleButtons();
 		});
 
         JToggleButton stateLinesTgl = new JToggleButton("L"); // state divider visibility (future)
@@ -908,10 +927,33 @@ filterField.setToolTipText("<html>"
         stopBtn.setToolTipText(tooltip.apply("Stop tracking", "Stop tracking the active route"));
         styleButton.accept(stopBtn);
 
+		JButton fastForwardBtn = new JButton("»");
+		fastForwardBtn.getAccessibleContext().setAccessibleName("Next patch");
+		fastForwardBtn.setToolTipText(tooltip.apply("Next patch", "Move the route cursor forward"));
+		styleButton.accept(fastForwardBtn);
+		applyToolbarGlyph.accept(fastForwardBtn, "fast_forward");
+
         JButton newRouteBtn = new JButton("+");
         newRouteBtn.getAccessibleContext().setAccessibleName("New route");
         newRouteBtn.setToolTipText(tooltip.apply("New route", "Create a new route"));
         styleButton.accept(newRouteBtn);
+
+        // Proxy: global Show/Hide Highlights toggle (shared with Patches).
+        JToggleButton routesHighlightsTgl = new JToggleButton("H");
+        routesHighlightsTgl.getAccessibleContext().setAccessibleName("Show highlights");
+        styleButton.accept(routesHighlightsTgl);
+        applyToolbarGlyph.accept(routesHighlightsTgl, "highlights");
+        this.routesHighlightsToggle = routesHighlightsTgl;
+        refreshHighlightToggleButtons();
+
+        routesHighlightsTgl.addActionListener(e ->
+        {
+            if (uiStateStore != null)
+            {
+                uiStateStore.setShowHighlightsOverlay(routesHighlightsTgl.isSelected());
+            }
+            refreshHighlightToggleButtons();
+        });
 
         // Parity actions from Patches toolbar (low rewiring): reorder toggle + collapse/expand all.
         JToggleButton routesReorderTgl = new JToggleButton("R");
@@ -953,6 +995,15 @@ filterField.setToolTipText("<html>"
             refreshRoutesToolbar.run();
         });
 
+		fastForwardBtn.addActionListener(e ->
+		{
+			if (FarmRootPanel.this.routesPanel != null)
+			{
+				FarmRootPanel.this.routesPanel.fastForwardCursor();
+			}
+			refreshRoutesToolbar.run();
+		});
+
         newRouteBtn.addActionListener(e ->
         {
             if (FarmRootPanel.this.routesPanel != null)
@@ -992,9 +1043,24 @@ filterField.setToolTipText("<html>"
         routesToolbar.add(playBtn);
         routesToolbar.add(pauseBtn);
         routesToolbar.add(stopBtn);
+		routesToolbar.add(fastForwardBtn);
         routesToolbar.add(routesReorderTgl);
+		routesToolbar.add(routesHighlightsTgl);
         routesToolbar.add(routesCollapseExpandBtn);
         routesToolbar.add(newRouteBtn);
+
+		routesHideToolbarToggle = new JToggleButton("▴");
+		routesHideToolbarToggle.setToolTipText(tooltip.apply("Hide toolbar", "Collapse the toolbar row"));
+		routesHideToolbarToggle.getAccessibleContext().setAccessibleName("Hide toolbar");
+		styleButton.accept(routesHideToolbarToggle);
+		applyToolbarGlyph.accept(routesHideToolbarToggle, "toolbar_toggle");
+		routesHideToolbarToggle.setSelected(routesToolbarHidden);
+		routesHideToolbarToggle.addActionListener(e ->
+		{
+			routesToolbarHidden = routesHideToolbarToggle.isSelected();
+			applyToolbarHiddenState();
+		});
+		routesToolbar.add(routesHideToolbarToggle);
 
         this.routesToolbarContent = routesToolbar;
 
@@ -1009,10 +1075,13 @@ filterField.setToolTipText("<html>"
                 return;
             }
 
+            refreshHighlightToggleButtons();
+
             boolean hasSelected = FarmRootPanel.this.routesPanel.hasSelectedRoute();
             boolean hasActive = FarmRootPanel.this.routesPanel.hasActiveRoute();
             boolean activeRunning = FarmRootPanel.this.routesPanel.isActiveRunning();
             boolean activePaused = FarmRootPanel.this.routesPanel.isActivePaused();
+			boolean canFastForward = FarmRootPanel.this.routesPanel.canFastForwardCursor();
 
             boolean filterActive = FarmRootPanel.this.routesPanel.isFilterActive();
             boolean reorderEnabled = FarmRootPanel.this.routesPanel.isReorderModeEnabled();
@@ -1020,7 +1089,13 @@ filterField.setToolTipText("<html>"
             playBtn.setEnabled(hasSelected);
             pauseBtn.setEnabled(hasActive && activeRunning);
             stopBtn.setEnabled(hasActive);
+			fastForwardBtn.setEnabled(hasActive && canFastForward);
             newRouteBtn.setEnabled(true);
+
+			fastForwardBtn.setToolTipText(tooltip.apply(
+					"Next patch",
+					(!hasActive ? "Start tracking a route to move the cursor"
+							: (canFastForward ? "Move the route cursor forward" : "Already at the last patch"))));
 
             // Reorder toggle is available only when not filtering.
             routesReorderTgl.setEnabled(!filterActive);
@@ -1155,6 +1230,26 @@ filterField.setToolTipText("<html>"
     }
 
 
+    private void refreshHighlightToggleButtons()
+    {
+        if (uiStateStore == null)
+        {
+            return;
+        }
+
+        boolean on = uiStateStore.isShowHighlightsOverlay();
+        if (patchesHighlightsToggle != null)
+        {
+            patchesHighlightsToggle.setSelected(on);
+            patchesHighlightsToggle.setToolTipText(on ? "Hide highlights" : "Show highlights");
+        }
+        if (routesHighlightsToggle != null)
+        {
+            routesHighlightsToggle.setSelected(on);
+            routesHighlightsToggle.setToolTipText(on ? "Hide highlights" : "Show highlights");
+        }
+    }
+
     private void setPatchesChromeVisible(boolean visible)
     {
         filterRow.setVisible(visible);
@@ -1180,11 +1275,17 @@ filterField.setToolTipText("<html>"
         if (current == Mode.ROUTES)
         {
             toolbarCardLayout.show(toolbarCards, TOOLBAR_CARD_ROUTES);
-            toolbarRow.setVisible(true);
-            restoreToolbarButton.setVisible(false);
 
-            // Routes toolbar has no hide/show state yet.
-            refreshRoutesToolbar.run();
+			boolean hidden = routesToolbarHidden;
+			toolbarRow.setVisible(!hidden);
+			restoreToolbarButton.setVisible(hidden);
+
+			if (routesHideToolbarToggle != null && routesHideToolbarToggle.isSelected() != hidden)
+			{
+				routesHideToolbarToggle.setSelected(hidden);
+			}
+
+			refreshRoutesToolbar.run();
 
             // Ensure toolbar height matches the visible card immediately after the switch.
             SwingUtilities.invokeLater(this::updateToolbarRowHeight);
@@ -1204,6 +1305,8 @@ filterField.setToolTipText("<html>"
         {
             hideToolbarToggle.setSelected(hidden);
         }
+
+        refreshHighlightToggleButtons();
 
         // Keep BoxLayout from leaving stale space.
         SwingUtilities.invokeLater(this::updateToolbarRowHeight);
