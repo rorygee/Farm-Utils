@@ -1,10 +1,6 @@
-<div align="center">
-
-<img src="./assets/logo.png" alt="Farm Utils Logo" width="420" />
-
 # Farm Utils
 
-</div>
+<img src="assets/logo.png" width="180" alt="Farm Utils logo" />
 
 Farm Utils is a restrained RuneLite plugin for observing and organizing farming patch state in Old School RuneScape.
 
@@ -16,7 +12,7 @@ It focuses on visibility and interaction surface rather than optimization. It do
 
 ## Patches Panel
 
-![Patches Panel](./assets/patches-panel.png)
+<img src="assets/patches-panel.png" width="420" alt="Patches Panel" />
 
 The Patches panel presents your patch list as a manipulable surface:
 
@@ -30,13 +26,13 @@ The Patches panel presents your patch list as a manipulable surface:
 
 ### Free text
 
-![Filter (basic)](./assets/filter-basic.png)
+![Filter (basic)](assets/filter-basic.png)
 
 Typing plain text filters across common fields (location, patch type, etc.).
 
 ### Fielded queries
 
-![Filter (fielded)](./assets/filter-fielded.png)
+![Filter (fielded)](assets/filter-fielded.png)
 
 Farm Utils also supports a compact, chainable filter syntax:
 
@@ -56,7 +52,7 @@ Examples:
 
 ## Selection & Reordering
 
-![Multi-selection](./assets/tree-multiselect.png)
+![Multi-selection](assets/tree-multiselect.png)
 
 The panel supports runtime-only multi-selection with standard semantics:
 
@@ -73,7 +69,7 @@ Where structurally valid, patches and groups can be reordered (also runtime-only
 
 ## Context Menu
 
-![Context Menu](./assets/context-menu.png)
+![Context Menu](assets/context-menu.png)
 
 Most per-patch actions live on the right-click menu:
 
@@ -86,7 +82,7 @@ Most per-patch actions live on the right-click menu:
 
 ## Patch Highlights
 
-![In-world highlights](./assets/highlight-overlay.png)
+![In-world highlights](assets/highlight-overlay.png)
 
 Patch highlighting is **swatch-slot based**:
 
@@ -104,7 +100,7 @@ Current limitations:
 
 ## Routes Panel
 
-![Routes Panel](./assets/routes-panel.png)
+<img src="assets/routes-panel.png" width="420" alt="Routes Panel" />
 
 Routes are intended as **runtime-only grouping** / **lightweight planning**:
 
@@ -116,7 +112,7 @@ Routes are intended as **runtime-only grouping** / **lightweight planning**:
 
 ## Configuration
 
-![Colours config](./assets/colours-config.png)
+![Colours config](assets/colours-config.png)
 
 Farm Utils exposes a handful of UI-focused configuration options, including:
 
