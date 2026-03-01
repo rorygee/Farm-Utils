@@ -807,9 +807,32 @@ filterField.setToolTipText("<html>"
 		});
 
         JToggleButton highlightsTgl = new JToggleButton("H"); // highlight visibility (future)
-        highlightsTgl.setToolTipText(tooltip.apply("Show highlights", "Toggle highlight indicators"));
+        highlightsTgl.getAccessibleContext().setAccessibleName("Show highlights");
         styleButton.accept(highlightsTgl);
         applyToolbarGlyph.accept(highlightsTgl, "highlights");
+
+		if (uiStateStore != null)
+		{
+			highlightsTgl.setSelected(uiStateStore.isShowHighlightsOverlay());
+		}
+
+		Runnable refreshHighlightsTooltip = () ->
+		{
+			boolean on = highlightsTgl.isSelected();
+			highlightsTgl.setToolTipText(tooltip.apply(
+				on ? "Hide highlights" : "Show highlights",
+				on ? "Hide in-world patch highlight overlay" : "Show in-world patch highlight overlay"));
+		};
+		refreshHighlightsTooltip.run();
+
+		highlightsTgl.addActionListener(e ->
+		{
+			if (uiStateStore != null)
+			{
+				uiStateStore.setShowHighlightsOverlay(highlightsTgl.isSelected());
+			}
+			refreshHighlightsTooltip.run();
+		});
 
         JToggleButton stateLinesTgl = new JToggleButton("L"); // state divider visibility (future)
         stateLinesTgl.setToolTipText(tooltip.apply("State indicators", "Cycle patch state indicator line mode"));

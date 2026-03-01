@@ -13,6 +13,7 @@ public class UiStateStore
 {
     private static final String GROUP = "farmutils";
     private static final String KEY_PREFIX = "ui.groupCollapsed.";
+	private static final String KEY_SHOW_HIGHLIGHTS_OVERLAY = "ui.showHighlightsOverlay";
 
     // UI ordering — empty means canonical order
     // Groups are identified by their groupName String (PatchId::getGroup)
@@ -46,6 +47,10 @@ public class UiStateStore
 
 	// Runtime-only: patch state indicator line presentation (cycled via toolbar "L").
 	private StateIndicatorMode stateIndicatorMode = StateIndicatorMode.FULL_WIDTH;
+
+	// Persisted via ConfigManager: whether the in-world patch highlight overlay renders.
+	// Defaults true to preserve the existing behavior (highlights visible unless explicitly hidden).
+	private boolean showHighlightsOverlay = true;
 
     // Runtime-only (not persisted yet): gates group + row drag reordering.
     private boolean reorderModeEnabled = false;
@@ -203,6 +208,35 @@ public class UiStateStore
 		StateIndicatorMode next = modes[(idx + 1) % modes.length];
 		setStateIndicatorMode(next);
 		return next;
+	}
+
+	public boolean isShowHighlightsOverlay()
+	{
+		// Best-effort: if ConfigManager isn't injected yet, fall back to last known value.
+		if (configManager == null)
+		{
+			return showHighlightsOverlay;
+		}
+
+		Boolean v = configManager.getConfiguration(GROUP, KEY_SHOW_HIGHLIGHTS_OVERLAY, Boolean.class);
+		if (v == null)
+		{
+			// Default true for backwards-compatible UX.
+			return true;
+		}
+
+		showHighlightsOverlay = v;
+		return showHighlightsOverlay;
+	}
+
+	public void setShowHighlightsOverlay(boolean enabled)
+	{
+		showHighlightsOverlay = enabled;
+		if (configManager == null)
+		{
+			return;
+		}
+		configManager.setConfiguration(GROUP, KEY_SHOW_HIGHLIGHTS_OVERLAY, enabled);
 	}
 
 	/**

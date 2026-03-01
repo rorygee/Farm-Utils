@@ -4,6 +4,7 @@ import com.farmutils.model.PatchId;
 import com.farmutils.overlay.footprint.Footprint;
 import com.farmutils.overlay.footprint.PatchFootprintRegistry;
 import com.farmutils.storage.PatchStore;
+import com.farmutils.storage.UiStateStore;
 import com.farmutils.ui.UiColors;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -33,13 +34,15 @@ public class PatchHighlightOverlay extends Overlay
 {
 	private final Client client;
 	private final PatchStore patchStore;
+	private final UiStateStore uiStateStore;
 	private final BasicStroke stroke = new BasicStroke(2f);
 
 	@Inject
-	public PatchHighlightOverlay(final Client client, final PatchStore patchStore)
+	public PatchHighlightOverlay(final Client client, final PatchStore patchStore, final UiStateStore uiStateStore)
 	{
 		this.client = client;
 		this.patchStore = patchStore;
+		this.uiStateStore = uiStateStore;
 
 		setPosition(OverlayPosition.DYNAMIC);
 		setLayer(OverlayLayer.ABOVE_SCENE);
@@ -48,6 +51,11 @@ public class PatchHighlightOverlay extends Overlay
 	@Override
 	public Dimension render(final Graphics2D graphics)
 	{
+		if (uiStateStore != null && !uiStateStore.isShowHighlightsOverlay())
+		{
+			return null;
+		}
+
 		if (client.getGameState() != GameState.LOGGED_IN)
 		{
 			return null;
