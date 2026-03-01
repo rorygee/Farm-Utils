@@ -946,24 +946,8 @@ public class PatchRow extends JPanel
             return;
         }
 
-        // Simple muted palette (temporary, runtime only)
-        switch (slot)
-        {
-            case 1:
-                swatch.setBackground(new Color(120, 160, 255));
-                break;
-            case 2:
-                swatch.setBackground(new Color(140, 200, 140));
-                break;
-            case 3:
-                swatch.setBackground(new Color(220, 180, 120));
-                break;
-            case 4:
-                swatch.setBackground(new Color(200, 120, 200));
-                break;
-            default:
-                swatch.setBackground(getBackground());
-        }
+		Color c = UiColors.highlightSlotColorOrNull(slot);
+		swatch.setBackground(c != null ? c : getBackground());
     }
 
 

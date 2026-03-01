@@ -67,6 +67,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 
 import javax.inject.Inject;
@@ -113,6 +114,12 @@ public class FarmutilsPlugin extends Plugin
 
 	@Inject
 	private InferenceEngine inferenceEngine;
+
+	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private com.farmutils.overlay.PatchHighlightOverlay patchHighlightOverlay;
 
 	// Track inference updates so the UI can refresh only when outputs change.
 	private long lastInferenceChangeCounter = -1;
@@ -269,6 +276,11 @@ public class FarmutilsPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		if (overlayManager != null && patchHighlightOverlay != null)
+		{
+			overlayManager.add(patchHighlightOverlay);
+		}
+
 		routeStore = new RouteStore();
 		routeSessionStore = new RouteSessionStore();
 		farmPanel.setRouteStore(routeStore);
@@ -302,6 +314,11 @@ public class FarmutilsPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		if (overlayManager != null && patchHighlightOverlay != null)
+		{
+			overlayManager.remove(patchHighlightOverlay);
+		}
+
 		if (navButton != null)
 		{
 			clientToolbar.removeNavigation(navButton);

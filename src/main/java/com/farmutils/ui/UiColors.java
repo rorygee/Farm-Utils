@@ -15,6 +15,46 @@ public final class UiColors
 {
     private UiColors() {}
 
+	/**
+	 * Slot palette used for both UI swatches and the in-world highlight overlay.
+	 *
+	 * <p>Slots are 1-based. Returns null for slot 0 / unassigned.</p>
+	 */
+	public static Color highlightSlotColorOrNull(final int slot)
+	{
+		return highlightSlotColorOrNull(slot, 255);
+	}
+
+	public static Color highlightSlotColorOrNull(final int slot, final int alpha)
+	{
+		if (slot <= 0)
+		{
+			return null;
+		}
+
+		final Color base;
+		switch (slot)
+		{
+			case 1:
+				base = new Color(120, 160, 255);
+				break;
+			case 2:
+				base = new Color(140, 200, 140);
+				break;
+			case 3:
+				base = new Color(220, 180, 120);
+				break;
+			case 4:
+				base = new Color(200, 120, 200);
+				break;
+			default:
+				base = new Color(140, 140, 140);
+				break;
+		}
+
+		return new Color(base.getRed(), base.getGreen(), base.getBlue(), clamp(alpha, 0, 255));
+	}
+
     public static Color stateColorOrNull(PatchView view, FarmutilsConfig config)
     {
         if (view == null || view.getRecord() == null || !view.getRecord().isPresent())
