@@ -313,7 +313,7 @@ public class FarmutilsPlugin extends Plugin
 				uiStateStore,
 				farmPanel,
 				routesPanel,
-				new FarmStubPanel("Calc", "Profit and XP calculations will be added later."),
+				new FarmStubPanel("Calc", "Calc panel intentionally stripped from this baseline. Rebuild it from this snapshot."),
 				new FarmStubPanel("Export", "Export and sharing features will be added later.")
 		);
 
