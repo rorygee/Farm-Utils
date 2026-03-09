@@ -236,6 +236,7 @@ public class FarmRootPanel extends PluginPanel
     private final UiStateStore uiStateStore;
     private final FarmPanel farmPanel;
     private final RoutesPanel routesPanel;
+    private final CalcPanel calcPanel;
     private final ClientUI clientUI;
 
     private final JPanel nav = new JPanel(new GridBagLayout());
@@ -294,6 +295,7 @@ public class FarmRootPanel extends PluginPanel
         this.uiStateStore = uiStateStore;
         this.farmPanel = farmPanel;
         this.routesPanel = (routesPanel instanceof RoutesPanel) ? (RoutesPanel) routesPanel : null;
+        this.calcPanel = (calcPanel instanceof CalcPanel) ? (CalcPanel) calcPanel : null;
 
         // Painted “floor” so no white bleed-through anywhere
         setOpaque(true);
@@ -1625,6 +1627,10 @@ filterField.setToolTipText("<html>"
         {
             routesPanel.refreshFromStore();
         }
+        if (mode == Mode.CALC && calcPanel != null && prev != Mode.CALC)
+        {
+            calcPanel.refreshFromStore();
+        }
 
         cards.revalidate();
         cards.repaint();
@@ -1658,6 +1664,14 @@ filterField.setToolTipText("<html>"
         if (current == Mode.ROUTES && routesPanel != null)
         {
             routesPanel.refreshUiFromConfig();
+        }
+        else if (current == Mode.CALC && calcPanel != null)
+        {
+            calcPanel.refreshUiFromConfig();
+        }
+        else
+        {
+            farmPanel.refreshUiFromConfig();
         }
     }
 

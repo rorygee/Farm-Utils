@@ -1,0 +1,15 @@
+package com.farmutils.calc;
+
+public enum CalcYieldModelType
+{
+    FLAT,
+    HARVEST_LIVES,
+    REGROWING_PICK,
+    CHECK_HEALTH_THEN_CHOP,
+    CHECK_HEALTH_ONLY,
+    FIXED_BATCH,
+    LIMPWURT_SCALING,
+    CRYSTAL_TREE_COMPOST_BANDED,
+    CORAL_CHAIN,
+    SPECIAL_CASE
+}

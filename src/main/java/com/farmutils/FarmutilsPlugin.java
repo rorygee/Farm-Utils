@@ -4,6 +4,7 @@ import com.farmutils.ui.FarmPanel;
 import com.farmutils.ui.FarmRootPanel;
 import com.farmutils.ui.FarmStubPanel;
 import com.farmutils.ui.RoutesPanel;
+import com.farmutils.ui.CalcPanel;
 import com.farmutils.route.RouteStore;
 import com.farmutils.route.RouteSessionStore;
 import com.farmutils.route.RouteSession;
@@ -72,11 +73,13 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.game.ItemManager;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -112,6 +115,7 @@ public class FarmutilsPlugin extends Plugin
 
 	private FarmRootPanel rootPanel;
 	private RoutesPanel routesPanel;
+	private CalcPanel calcPanel;
 	private RouteStore routeStore;
 	private RouteSessionStore routeSessionStore;
 
@@ -119,6 +123,12 @@ public class FarmutilsPlugin extends Plugin
 
 	@Inject
 	private Client client;
+
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private ClientThread clientThread;
 
 	@Inject
 	private InferenceEngine inferenceEngine;
@@ -307,13 +317,15 @@ public class FarmutilsPlugin extends Plugin
 
 		routesPanel = new RoutesPanel(config, routeStore, routeSessionStore, farmPanel.getPatchStore(), farmPanel.getItemManager(), uiStateStore);
 
+		calcPanel = new CalcPanel(config, routeStore, itemManager, clientThread, client);
+
 		rootPanel = new FarmRootPanel(
 				config,
 				clientUI,
 				uiStateStore,
 				farmPanel,
 				routesPanel,
-				new FarmStubPanel("Calc", "Calc panel intentionally stripped from this baseline. Rebuild it from this snapshot."),
+				calcPanel,
 				new FarmStubPanel("Export", "Export and sharing features will be added later.")
 		);
 
@@ -344,6 +356,8 @@ public class FarmutilsPlugin extends Plugin
 			clientToolbar.removeNavigation(navButton);
 			navButton = null;
 		}
+
+		calcPanel = null;
 	}
 
 	@Subscribe
@@ -399,6 +413,11 @@ public class FarmutilsPlugin extends Plugin
 			varbit823KeldaHopsVarbitObserver.reset();
 			varbit9016ElderCadantineVarbitObserver.reset();
 			varbit10781EnrichedSnapdragonVarbitObserver.reset();
+
+			if (gameStateChanged.getGameState() == GameState.LOGGED_IN && calcPanel != null)
+			{
+				SwingUtilities.invokeLater(calcPanel::refreshForLogin);
+			}
 		}
 	}
 
