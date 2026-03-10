@@ -313,7 +313,7 @@ public final class CalcCatalogue
         final double chanceToSave = (1.0d + boostedCts) / 256.0d;
         final double expectedYield = lives / (1.0d - chanceToSave);
         return CalcExpectedYieldResult.resolved(expectedYield, confidenceTag, yieldModelNote(crop, expectedYield,
-                "Harvest-lives expectation at Farming " + level + " with " + lives + " starting lives."));
+                "Yield: standard · L" + level + " · " + lives + " lives"));
     }
 
     private static CalcExpectedYieldResult limpwurtExpectedYield(
@@ -341,7 +341,7 @@ public final class CalcCatalogue
 
         final double expectedYield = 3.0d + (totalBonus / level);
         return CalcExpectedYieldResult.resolved(expectedYield, confidenceTag,
-                yieldModelNote(crop, expectedYield, "Special limpwurt expectation at effective Farming " + level + "."));
+                yieldModelNote(crop, expectedYield, "Limpwurt · eff " + level + " · min 3 · no compost"));
     }
 
     private static CalcExpectedYieldResult cactusExpectedYield(
@@ -360,7 +360,7 @@ public final class CalcCatalogue
         final double useChance = 0.75d + ((level - 55) * (0.30d - 0.75d) / 44.0d);
         final double expectedYield = 3.0d / useChance;
         return CalcExpectedYieldResult.resolved(expectedYield, confidenceTag,
-                yieldModelNote(crop, expectedYield, "Special cactus expectation at Farming " + level + "."));
+                yieldModelNote(crop, expectedYield, "Cactus · L" + level + " · 3 lives · no compost"));
     }
 
     private static int interpolateCts(final int ctsLow, final int ctsHigh, final int level)
@@ -387,32 +387,23 @@ public final class CalcCatalogue
             final CalcYieldConfidenceTag tag = crop.getYieldProfile().getConfidenceTag();
             if (tag == CalcYieldConfidenceTag.ESTIMATED)
             {
-                notes.add("Yield constants are estimated and should be easy to replace later.");
+                notes.add("Est.");
             }
             else if (tag == CalcYieldConfidenceTag.DERIVED)
             {
-                notes.add("Yield constants are back-solved from published family percentages.");
+                notes.add("Derived.");
             }
             else if (tag == CalcYieldConfidenceTag.SPECIAL_CASE)
             {
-                notes.add("Uses a non-standard family-specific yield model.");
+                notes.add("Special-case.");
             }
-        }
-
-        if (crop != null && crop.getYieldProfile() != null && crop.getYieldProfile().getNotes() != null && !crop.getYieldProfile().getNotes().trim().isEmpty())
-        {
-            notes.add(crop.getYieldProfile().getNotes().trim());
-        }
-        if (crop != null && crop.getNotes() != null && !crop.getNotes().trim().isEmpty())
-        {
-            notes.add(crop.getNotes().trim());
         }
 
         if (notes.isEmpty())
         {
             return null;
         }
-        return String.join(" ", notes);
+        return String.join(" · ", notes);
     }
 
     public static CalcSimpleModel simpleModelFor(final String group, final String cropName)

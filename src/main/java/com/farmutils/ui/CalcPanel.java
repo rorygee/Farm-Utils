@@ -31,6 +31,10 @@ import javax.swing.border.AbstractBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.event.FocusAdapter;
@@ -115,11 +119,18 @@ public class CalcPanel extends JPanel
     private static final String MODIFIER_FARMING_CAPE = "farming_cape";
     private static final String MODIFIER_ATTAS = "attas";
     private static final String MODIFIER_AMULET_OF_BOUNTY = "amulet_of_bounty";
+    private static final String FARMING_LEVEL_AUTO_LABEL_PREFIX = "Auto (";
 
     private final JPanel editingPanel = new JPanel();
     private final JLabel editingTitleLabel = new JLabel("Editing: Select a route");
     private final JTextArea editingHintLabel = buildHintTextArea("Choose a route from the filter above.");
     private final JTextArea editingStateHintLabel = buildHintTextArea("");
+    private final Component editingAfterTitleSpacer = Box.createVerticalStrut(10);
+    private final Component editingAfterHintSpacer = Box.createVerticalStrut(6);
+    private final Component editingAfterCropSpacer = Box.createVerticalStrut(6);
+    private final Component editingAfterCompostSpacer = Box.createVerticalStrut(6);
+    private final Component editingAfterModifiersSpacer = Box.createVerticalStrut(6);
+    private final Component editingAfterActionsSpacer = Box.createVerticalStrut(4);
     private final JLabel editingCropLabel = new JLabel("Crop:");
     private final JLabel editingCompostLabel = new JLabel("Compost:");
     private final JPanel editingControlsRow = new JPanel(new BorderLayout(8, 0));
@@ -140,6 +151,7 @@ public class CalcPanel extends JPanel
     private boolean suppressFilterEvents;
     private boolean suppressCropDropdownEvents;
     private boolean suppressCompostDropdownEvents;
+    private boolean suppressFarmingLevelDropdownEvents;
     private final Map<RouteId, RouteCalcState> routeCalcStates = new LinkedHashMap<>();
     private final Map<RouteId, Set<String>> routeCollapsedGroups = new LinkedHashMap<>();
     private final Map<Integer, Integer> itemPriceCache = new HashMap<>();
@@ -372,7 +384,7 @@ public class CalcPanel extends JPanel
         summaryBreakdownPanels.clear();
         summaryToggleLabels.clear();
 
-        summaryPanel.add(buildSummarySection(CalcBreakdownStat.PROFIT, "Profit:", profitValue));
+        summaryPanel.add(summaryValueLine("Profit:", profitValue));
         summaryPanel.add(buildSummarySection(CalcBreakdownStat.COSTS, "Costs:", costsValue));
         summaryPanel.add(buildSummarySection(CalcBreakdownStat.REVENUE, "Revenue:", revenueValue));
         summaryPanel.add(UiTokens.divider(ColorScheme.DARKER_GRAY_COLOR));
@@ -475,7 +487,7 @@ public class CalcPanel extends JPanel
         editingPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         editingPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(1, 0, 1, 0, ColorScheme.DARKER_GRAY_COLOR),
-                BorderFactory.createEmptyBorder(8, 8, 8, 8)
+                BorderFactory.createEmptyBorder(10, 8, 8, 8)
         ));
         editingPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         editingPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
@@ -539,15 +551,17 @@ public class CalcPanel extends JPanel
         editingModifierRows.setVisible(false);
 
         editingPanel.add(editingTitleLabel);
-        editingPanel.add(Box.createVerticalStrut(6));
+        editingPanel.add(editingAfterTitleSpacer);
+        editingPanel.add(editingHintLabel);
+        editingPanel.add(editingAfterHintSpacer);
         editingPanel.add(editingControlsRow);
-        editingPanel.add(Box.createVerticalStrut(6));
+        editingPanel.add(editingAfterCropSpacer);
         editingPanel.add(editingCompostRow);
-        editingPanel.add(Box.createVerticalStrut(6));
+        editingPanel.add(editingAfterCompostSpacer);
         editingPanel.add(editingModifierRows);
-        editingPanel.add(Box.createVerticalStrut(6));
+        editingPanel.add(editingAfterModifiersSpacer);
         editingPanel.add(editingActionsRow);
-        editingPanel.add(Box.createVerticalStrut(4));
+        editingPanel.add(editingAfterActionsSpacer);
         editingPanel.add(editingStateHintLabel);
     }
 
@@ -1016,7 +1030,7 @@ public class CalcPanel extends JPanel
 
     private void toggleBreakdownStat(final CalcBreakdownStat stat)
     {
-        if (stat == null)
+        if (stat == null || stat == CalcBreakdownStat.PROFIT)
         {
             return;
         }
@@ -1251,24 +1265,46 @@ public class CalcPanel extends JPanel
         }
     }
 
+    private void setEditingSectionVisible(final JComponent component, final Component spacer, final boolean visible)
+    {
+        component.setVisible(visible);
+        if (spacer != null)
+        {
+            spacer.setVisible(visible);
+        }
+    }
+
+    private void setEditingHintVisible(final boolean visible)
+    {
+        editingHintLabel.setVisible(visible);
+        editingAfterTitleSpacer.setVisible(true);
+        editingAfterHintSpacer.setVisible(visible);
+    }
+
     private void refreshEditingPanel()
     {
         styleComboBox(editingCropDropdown, textScale());
         styleComboBox(editingCompostDropdown, textScale());
         editingTitleLabel.setFont(UiFont.scaled(editingTitleLabel.getFont(), textScale(), Font.BOLD));
+        editingHintLabel.setFont(UiFont.scaled(editingHintLabel.getFont(), textScale(), Font.PLAIN));
         editingCropLabel.setFont(UiFont.scaled(editingCropLabel.getFont(), textScale(), Font.PLAIN));
         editingCompostLabel.setFont(UiFont.scaled(editingCompostLabel.getFont(), textScale(), Font.PLAIN));
 
         if (selectedRoute == null)
         {
             editingTitleLabel.setText("Select a route");
+            editingHintLabel.setText("Use the filter above to select a route from the Routes panel.");
             editingStateHintLabel.setText("");
+            setEditingHintVisible(true);
+            setEditingSectionVisible(editingControlsRow, editingAfterCropSpacer, false);
+            setEditingSectionVisible(editingCompostRow, editingAfterCompostSpacer, false);
+            setEditingSectionVisible(editingModifierRows, editingAfterModifiersSpacer, false);
+            setEditingSectionVisible(editingActionsRow, editingAfterActionsSpacer, false);
             setEditingCropOptions(null, null, false);
             setEditingCompostOptions(null, null, false, false);
             refreshEditingModifierRows(null, null, null, false, false);
             clearOverrideButton.setVisible(false);
             clearOverrideButton.setEnabled(false);
-            editingActionsRow.setVisible(false);
             return;
         }
 
@@ -1280,36 +1316,51 @@ public class CalcPanel extends JPanel
 
             if (!isSupportedCropGroup(group))
             {
+                editingHintLabel.setText("");
                 editingStateHintLabel.setText(group + " is shown in the route but is not yet included in calculations.");
-                setEditingCropOptions(group, null, false);
-                setEditingCompostOptions(group, null, false, true);
+                setEditingHintVisible(false);
+                setEditingSectionVisible(editingControlsRow, editingAfterCropSpacer, true);
+                setEditingSectionVisible(editingCompostRow, editingAfterCompostSpacer, true);
                 refreshEditingModifierRows(group, selectedPatchId, null, false, true);
+                setEditingSectionVisible(editingModifierRows, editingAfterModifiersSpacer, editingModifierRows.isVisible());
                 clearOverrideButton.setVisible(false);
                 clearOverrideButton.setEnabled(false);
-                editingActionsRow.setVisible(false);
+                setEditingSectionVisible(editingActionsRow, editingAfterActionsSpacer, false);
+                setEditingCropOptions(group, null, false);
+                setEditingCompostOptions(group, null, false, true);
                 return;
             }
 
+            editingHintLabel.setText("");
             editingStateHintLabel.setText(editingPatchHint(displayState));
+            setEditingHintVisible(false);
+            setEditingSectionVisible(editingControlsRow, editingAfterCropSpacer, true);
+            setEditingSectionVisible(editingCompostRow, editingAfterCompostSpacer, true);
             setEditingCropOptions(group, resolvedCropNameForPatch(selectedPatchId), true);
             setEditingCompostOptions(group, selectedCompostTierForPatch(selectedPatchId), true, true);
             refreshEditingModifierRows(group, selectedPatchId, resolvedCropForPatch(selectedPatchId), true, true);
+            setEditingSectionVisible(editingModifierRows, editingAfterModifiersSpacer, editingModifierRows.isVisible());
             clearOverrideButton.setVisible(true);
             clearOverrideButton.setEnabled(hasExplicitOverride(selectedPatchId));
-            editingActionsRow.setVisible(true);
+            setEditingSectionVisible(editingActionsRow, editingAfterActionsSpacer, true);
             return;
         }
 
         if (selectedGroup == null || selectedGroup.trim().isEmpty())
         {
             editingTitleLabel.setText("No patch types in route");
+            editingHintLabel.setText("This route has no calc-supported patch groups yet.");
             editingStateHintLabel.setText("");
+            setEditingHintVisible(true);
+            setEditingSectionVisible(editingControlsRow, editingAfterCropSpacer, false);
+            setEditingSectionVisible(editingCompostRow, editingAfterCompostSpacer, false);
+            setEditingSectionVisible(editingModifierRows, editingAfterModifiersSpacer, false);
+            clearOverrideButton.setVisible(false);
+            clearOverrideButton.setEnabled(false);
+            setEditingSectionVisible(editingActionsRow, editingAfterActionsSpacer, false);
             setEditingCropOptions(null, null, false);
             setEditingCompostOptions(null, null, false, false);
             refreshEditingModifierRows(null, null, null, false, false);
-            clearOverrideButton.setVisible(false);
-            clearOverrideButton.setEnabled(false);
-            editingActionsRow.setVisible(false);
             return;
         }
 
@@ -1318,23 +1369,33 @@ public class CalcPanel extends JPanel
 
         if (!isSupportedCropGroup(selectedGroup))
         {
+            editingHintLabel.setText("");
             editingStateHintLabel.setText(selectedGroup + " is shown in the route but is not yet included in calculations.");
+            setEditingHintVisible(false);
+            setEditingSectionVisible(editingControlsRow, editingAfterCropSpacer, true);
+            setEditingSectionVisible(editingCompostRow, editingAfterCompostSpacer, false);
             setEditingCropOptions(selectedGroup, null, false);
             setEditingCompostOptions(selectedGroup, null, false, false);
             refreshEditingModifierRows(selectedGroup, null, null, false, false);
+            setEditingSectionVisible(editingModifierRows, editingAfterModifiersSpacer, editingModifierRows.isVisible());
             clearOverrideButton.setVisible(false);
             clearOverrideButton.setEnabled(false);
-            editingActionsRow.setVisible(false);
+            setEditingSectionVisible(editingActionsRow, editingAfterActionsSpacer, false);
             return;
         }
 
+        editingHintLabel.setText("");
         editingStateHintLabel.setText(editingGroupHint(displayState));
+        setEditingHintVisible(false);
+        setEditingSectionVisible(editingControlsRow, editingAfterCropSpacer, true);
+        setEditingSectionVisible(editingCompostRow, editingAfterCompostSpacer, true);
         setEditingCropOptions(selectedGroup, selectedDefaultCropName(selectedGroup), true);
         setEditingCompostOptions(selectedGroup, selectedDefaultCompostTier(selectedGroup), true, false);
         refreshEditingModifierRows(selectedGroup, null, resolvedDefaultCropForGroup(selectedGroup), true, false);
+        setEditingSectionVisible(editingModifierRows, editingAfterModifiersSpacer, editingModifierRows.isVisible());
         clearOverrideButton.setVisible(false);
         clearOverrideButton.setEnabled(false);
-        editingActionsRow.setVisible(false);
+        setEditingSectionVisible(editingActionsRow, editingAfterActionsSpacer, false);
     }
 
 
@@ -1354,6 +1415,7 @@ public class CalcPanel extends JPanel
         }
 
         int count = 0;
+        count += addEditingFarmingLevelRow(enabled);
         count += addEditingModifierRowIfApplicable(group, patchId, crop, enabled, patchScoped, MODIFIER_BOTTOMLESS_BUCKET, "Bottomless bucket");
         count += addEditingModifierRowIfApplicable(group, patchId, crop, enabled, patchScoped, MODIFIER_PROTECTION_PAYMENT, "Protection payment");
         count += addEditingModifierRowIfApplicable(group, patchId, crop, enabled, patchScoped, MODIFIER_MAGIC_SECATEURS, "Magic secateurs");
@@ -1364,6 +1426,58 @@ public class CalcPanel extends JPanel
         editingModifierRows.setVisible(count > 0);
         editingModifierRows.revalidate();
         editingModifierRows.repaint();
+    }
+
+    private int addEditingFarmingLevelRow(final boolean enabled)
+    {
+        final JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+        final JLabel label = new JLabel("Farming level:");
+        label.setForeground(ColorScheme.TEXT_COLOR);
+        label.setFont(UiFont.scaled(label.getFont(), textScale(), Font.PLAIN));
+
+        final JTextField field = new JTextField();
+        field.setEnabled(enabled);
+        field.setFocusable(true);
+        field.setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 4));
+        field.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        field.setForeground(ColorScheme.TEXT_COLOR);
+        field.setCaretColor(ColorScheme.TEXT_COLOR);
+        field.setFont(UiFont.scaled(field.getFont(), textScale(), Font.PLAIN));
+        field.setToolTipText("Blank = " + farmingLevelAutoLabel() + ".");
+        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, field.getPreferredSize().height));
+
+        if (field.getDocument() instanceof AbstractDocument)
+        {
+            ((AbstractDocument) field.getDocument()).setDocumentFilter(new FarmingLevelDocumentFilter());
+        }
+
+        final Integer override = selectedFarmingLevelOverride();
+        field.setText(override == null ? "" : String.valueOf(override));
+
+        field.addActionListener(e -> applyEditingFarmingLevelSelection(field.getText(), field));
+        field.addFocusListener(new FocusAdapter()
+        {
+            @Override
+            public void focusLost(final FocusEvent e)
+            {
+                applyEditingFarmingLevelSelection(field.getText(), field);
+            }
+        });
+
+        final JPanel fieldContainer = new JPanel(new BorderLayout());
+        fieldContainer.setOpaque(false);
+        fieldContainer.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, dropdownValueInset()));
+        fieldContainer.add(field, BorderLayout.CENTER);
+
+        row.add(label, BorderLayout.WEST);
+        row.add(fieldContainer, BorderLayout.CENTER);
+        editingModifierRows.add(row);
+        editingModifierRows.add(Box.createVerticalStrut(6));
+        return 1;
     }
 
     private int addEditingModifierRowIfApplicable(
@@ -1524,6 +1638,86 @@ public class CalcPanel extends JPanel
         refreshCalculatedView();
     }
 
+    private void applyEditingFarmingLevelSelection(final String selection, final JTextField field)
+    {
+        if (selectedRouteId == null)
+        {
+            return;
+        }
+
+        final Integer parsed = parseFarmingLevelSelection(selection);
+        final RouteCalcState state = routeCalcState(selectedRouteId);
+        final Integer current = selectedFarmingLevelOverride();
+        if (parsed == null)
+        {
+            if (field != null)
+            {
+                field.setText("");
+            }
+            if (current == null)
+            {
+                return;
+            }
+            state.farmingLevelOverride = null;
+            refreshCalculatedView();
+            return;
+        }
+
+        if (field != null)
+        {
+            field.setText(String.valueOf(parsed));
+        }
+
+        if (Objects.equals(current, parsed))
+        {
+            return;
+        }
+
+        state.farmingLevelOverride = parsed;
+        refreshCalculatedView();
+    }
+
+    private Integer parseFarmingLevelSelection(final String selection)
+    {
+        if (selection == null)
+        {
+            return null;
+        }
+
+        final String trimmed = selection.trim();
+        if (trimmed.isEmpty() || trimmed.startsWith(FARMING_LEVEL_AUTO_LABEL_PREFIX))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Math.max(1, Math.min(126, Integer.parseInt(trimmed)));
+        }
+        catch (final NumberFormatException ex)
+        {
+            return selectedFarmingLevelOverride();
+        }
+    }
+
+    private String farmingLevelAutoLabel()
+    {
+        final Integer liveLevel = currentLiveFarmingLevel();
+        final int fallback = liveLevel != null && liveLevel > 0 ? liveLevel : 1;
+        return FARMING_LEVEL_AUTO_LABEL_PREFIX + fallback + ")";
+    }
+
+    private Integer selectedFarmingLevelOverride()
+    {
+        if (selectedRouteId == null)
+        {
+            return null;
+        }
+
+        final RouteCalcState state = routeCalcState(selectedRouteId);
+        return state == null ? null : state.farmingLevelOverride;
+    }
+
     private Boolean modifierSelectionFromLabel(final String value)
     {
         if (value == null)
@@ -1602,7 +1796,6 @@ public class CalcPanel extends JPanel
 
         if (selectedRoute == null)
         {
-            list.add(buildEmptyState("No route selected", "Use the filter above to select a route from the Routes panel."));
             return;
         }
 
@@ -2338,7 +2531,7 @@ public class CalcPanel extends JPanel
 
     private boolean implicitModifierDefaultEnabled(final String modifierId)
     {
-        return MODIFIER_PROTECTION_PAYMENT.equals(modifierId);
+        return false;
     }
 
     private void removePatchModifierOverride(final RouteCalcState state, final PatchId patchId, final String modifierId)
@@ -2377,6 +2570,12 @@ public class CalcPanel extends JPanel
         {
             state.defaultModifierEnabledByGroup.remove(group);
         }
+    }
+
+    private int dropdownValueInset()
+    {
+        final int comboHeight = editingCropDropdown == null ? 0 : editingCropDropdown.getPreferredSize().height;
+        return Math.max(18, comboHeight - 2);
     }
 
     private void styleComboBox(final JComboBox<?> combo, final float scale)
@@ -2433,7 +2632,7 @@ public class CalcPanel extends JPanel
                 null,
                 revenue - costs,
                 null,
-                complete ? "Derived from resolved revenue and cost rows." : "Derived from partial totals while one or more patch values remain unresolved."
+                complete ? "Revenue - costs." : "Revenue - costs (partial)."
         ));
 
         if (!complete)
@@ -2448,7 +2647,7 @@ public class CalcPanel extends JPanel
                     null,
                     null,
                     null,
-                    "One or more patch totals could not be fully resolved from current selections or prices."
+                    "Some patch values are unresolved."
             ));
         }
 
@@ -2460,27 +2659,27 @@ public class CalcPanel extends JPanel
         final List<CalcBreakdownRow> rows = new ArrayList<>();
         if (patchId == null)
         {
-            addMissingPatchRows(rows, null, null, null, "Patch is unavailable.");
+            addMissingPatchRows(rows, null, null, null, "Patch unavailable.");
             return new CalcPatchBreakdownResult(false, 0L, 0L, 0.0d, rows);
         }
 
         if (!isSupportedCropGroup(patchId.getGroup()))
         {
-            addMissingPatchRows(rows, patchId, patchId.getGroup(), null, patchId.getGroup() + " is not yet included in calculations.");
+            addMissingPatchRows(rows, patchId, patchId.getGroup(), null, patchId.getGroup() + " not in calc yet.");
             return new CalcPatchBreakdownResult(false, 0L, 0L, 0.0d, rows);
         }
 
         final String cropName = resolvedCropNameForPatch(patchId);
         if (cropName == null || cropName.trim().isEmpty())
         {
-            addMissingPatchRows(rows, patchId, patchId.getGroup(), null, "Crop selection is unknown for this patch.");
+            addMissingPatchRows(rows, patchId, patchId.getGroup(), null, "Crop unset.");
             return new CalcPatchBreakdownResult(false, 0L, 0L, 0.0d, rows);
         }
 
         final CalcCropDefinition crop = CalcCatalogue.cropFor(patchId.getGroup(), cropName);
         if (crop == null)
         {
-            addMissingPatchRows(rows, patchId, patchId.getGroup(), cropName, "Calc metadata is missing for the selected crop.");
+            addMissingPatchRows(rows, patchId, patchId.getGroup(), cropName, "Crop metadata missing.");
             return new CalcPatchBreakdownResult(false, 0L, 0L, 0.0d, rows);
         }
 
@@ -2502,7 +2701,7 @@ public class CalcPanel extends JPanel
                 diaryBonusForPatch(patchId));
         if (yieldResult == null || !yieldResult.isResolved())
         {
-            addMissingPatchRows(rows, patchId, patchId.getGroup(), cropName, yieldResult == null ? "Expected yield is unresolved for the current crop and modifier state." : yieldResult.getNote());
+            addMissingPatchRows(rows, patchId, patchId.getGroup(), cropName, yieldResult == null ? "Yield unresolved." : yieldResult.getNote());
             return new CalcPatchBreakdownResult(false, 0L, 0L, 0.0d, rows);
         }
         final double expectedYield = yieldResult.getExpectedYield();
@@ -2519,18 +2718,18 @@ public class CalcPanel extends JPanel
                 final double compostQuantity = bottomlessBucketEnabled ? 0.5d : 1.0d;
                 final String compostNote = buildNotes(
                         compostSelectionNote(patchId, compostTier),
-                        bottomlessBucketEnabled ? "Bottomless bucket enabled: effective treatment cost uses half a charge." : null);
+                        bottomlessBucketEnabled ? "Bottomless: 0.5 charge." : null);
                 final int compostPrice = itemPrice(compostItem);
                 if (compostPrice < 0)
                 {
                     if (compostItem.hasGePrice())
                     {
                         complete = false;
-                        rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, compostItem.getName(), CalcBreakdownCategory.UNRESOLVED, compostQuantity, null, null, buildNotes(compostNote, "Treatment price is unresolved.")));
+                        rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, compostItem.getName(), CalcBreakdownCategory.UNRESOLVED, compostQuantity, null, null, buildNotes(compostNote, "GE price unresolved.")));
                     }
                     else
                     {
-                        rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, compostItem.getName(), CalcBreakdownCategory.OMITTED, compostQuantity, null, null, buildNotes(compostNote, "Excluded from GP totals because no GE price is available.")));
+                        rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, compostItem.getName(), CalcBreakdownCategory.OMITTED, compostQuantity, null, null, buildNotes(compostNote, "No GE price.")));
                     }
                 }
                 else
@@ -2544,12 +2743,12 @@ public class CalcPanel extends JPanel
 
         for (final CalcItemStack input : crop.getPlantingInputs())
         {
-            final boolean bountyAdjusted = amuletOfBountyEnabled && Objects.equals(input.getItem(), crop.getPrimaryPlantingItem());
+            final boolean bountyAdjusted = amuletOfBountyEnabled && sameCalcItem(input.getItem(), crop.getPrimaryPlantingItem());
             final double effectiveQuantity = bountyAdjusted
                     ? Math.max(0.0d, input.getQuantity() - 0.25d)
                     : input.getQuantity();
             final String inputNote = bountyAdjusted
-                    ? "Amulet of bounty enabled: expected seed use reduced by 0.25 seeds per patch."
+                    ? "Bounty: -0.25 seed/patch."
                     : null;
             final int price = itemPrice(input.getItem());
             final long totalPrice = price < 0 ? 0L : Math.round(price * effectiveQuantity);
@@ -2558,11 +2757,11 @@ public class CalcPanel extends JPanel
                 if (input.getItem().hasGePrice())
                 {
                     complete = false;
-                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, input.getItem().getName(), CalcBreakdownCategory.UNRESOLVED, effectiveQuantity, null, null, buildNotes(inputNote, "Planting input price is unresolved.")));
+                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, input.getItem().getName(), CalcBreakdownCategory.UNRESOLVED, effectiveQuantity, null, null, buildNotes(inputNote, "GE price unresolved.")));
                 }
                 else
                 {
-                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, input.getItem().getName(), CalcBreakdownCategory.OMITTED, effectiveQuantity, null, null, buildNotes(inputNote, "Excluded from GP totals because no GE price is available.")));
+                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, input.getItem().getName(), CalcBreakdownCategory.OMITTED, effectiveQuantity, null, null, buildNotes(inputNote, "No GE price.")));
                 }
                 continue;
             }
@@ -2575,7 +2774,7 @@ public class CalcPanel extends JPanel
         {
             if (!protectionPaymentEnabled)
             {
-                rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, payment.getItem().getName(), CalcBreakdownCategory.OMITTED, (double) payment.getQuantity(), null, null, "Protection payment is disabled in modifier state."));
+                rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, payment.getItem().getName(), CalcBreakdownCategory.OMITTED, (double) payment.getQuantity(), null, null, "Protection disabled."));
                 continue;
             }
 
@@ -2585,12 +2784,11 @@ public class CalcPanel extends JPanel
             {
                 if (payment.getItem().hasGePrice())
                 {
-                    complete = false;
-                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, payment.getItem().getName(), CalcBreakdownCategory.UNRESOLVED, (double) payment.getQuantity(), null, null, "Protection payment price is unresolved."));
+                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, payment.getItem().getName(), CalcBreakdownCategory.OMITTED, (double) payment.getQuantity(), null, null, "Protection price unresolved."));
                 }
                 else
                 {
-                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, payment.getItem().getName(), CalcBreakdownCategory.OMITTED, (double) payment.getQuantity(), null, null, "Excluded from GP totals because no GE price is available."));
+                    rows.add(breakdownRow(CalcBreakdownStat.COSTS, patchId, cropName, payment.getItem().getName(), CalcBreakdownCategory.OMITTED, (double) payment.getQuantity(), null, null, "Protection price unavailable."));
                 }
                 continue;
             }
@@ -2604,12 +2802,12 @@ public class CalcPanel extends JPanel
             final String outputNote = buildNotes(yieldResult.getNote(), activeYieldModifierNote(patchId, crop, magicSecateursEnabled, farmingCapeEnabled, attasEnabled), output.getNotes());
             if (output.getRole() != CalcOutputRole.PRIMARY)
             {
-                rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.OMITTED, expectedYield, null, null, buildNotes(outputNote, "Excluded from GP totals because output role is " + output.getRole().name().toLowerCase(Locale.ROOT) + ".")));
+                rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.OMITTED, expectedYield, null, null, buildNotes(outputNote, "Excluded: " + output.getRole().name().toLowerCase(Locale.ROOT) + ".")));
                 continue;
             }
             if (output.getCondition() != null)
             {
-                rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.OMITTED, expectedYield, null, null, buildNotes(outputNote, "Excluded from GP totals because output is conditional: " + output.getCondition())));
+                rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.OMITTED, expectedYield, null, null, buildNotes(outputNote, "Conditional: " + output.getCondition())));
                 continue;
             }
 
@@ -2619,11 +2817,11 @@ public class CalcPanel extends JPanel
                 if (output.getItem().hasGePrice())
                 {
                     complete = false;
-                    rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.UNRESOLVED, expectedYield, null, null, buildNotes(outputNote, "Harvest output price is unresolved.")));
+                    rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.UNRESOLVED, expectedYield, null, null, buildNotes(outputNote, "GE price unresolved.")));
                 }
                 else
                 {
-                    rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.OMITTED, expectedYield, null, null, buildNotes(outputNote, "Excluded from GP totals because no GE price is available.")));
+                    rows.add(breakdownRow(CalcBreakdownStat.REVENUE, patchId, cropName, output.getItem().getName(), CalcBreakdownCategory.OMITTED, expectedYield, null, null, buildNotes(outputNote, "No GE price.")));
                 }
                 continue;
             }
@@ -2654,7 +2852,7 @@ public class CalcPanel extends JPanel
                 final double harvestXp = crop.getXpProfile().getHarvestXpPerItem() * expectedYield;
                 xp += harvestXp;
                 hasXpContribution = true;
-                rows.add(breakdownRow(CalcBreakdownStat.XP, patchId, cropName, cropName, CalcBreakdownCategory.HARVEST_XP, expectedYield, null, harvestXp, buildNotes(yieldResult.getNote(), activeYieldModifierNote(patchId, crop, magicSecateursEnabled, farmingCapeEnabled, attasEnabled))));
+                rows.add(breakdownRow(CalcBreakdownStat.XP, patchId, cropName, cropName, CalcBreakdownCategory.HARVEST_XP, expectedYield, null, harvestXp, activeYieldModifierNote(patchId, crop, magicSecateursEnabled, farmingCapeEnabled, attasEnabled)));
             }
         }
 
@@ -2662,7 +2860,7 @@ public class CalcPanel extends JPanel
         if (!hasKnownValue)
         {
             complete = false;
-            addMissingPatchRows(rows, patchId, patchId.getGroup(), cropName, "The current metadata does not yet resolve a valued output for this patch.");
+            addMissingPatchRows(rows, patchId, patchId.getGroup(), cropName, "No valued output resolved yet.");
         }
 
         return new CalcPatchBreakdownResult(complete, costs, revenue, xp, rows);
@@ -2704,7 +2902,7 @@ public class CalcPanel extends JPanel
 
         if (selectedOverrideCompostTier(patchId) != null)
         {
-            return "Patch override treatment: " + compostSelectionLabel(compostTier) + ".";
+            return "Patch treatment: " + compostSelectionLabel(compostTier) + ".";
         }
 
         if (selectedRouteId != null)
@@ -2752,12 +2950,25 @@ public class CalcPanel extends JPanel
 
             if (sb.length() > 0)
             {
-                sb.append(' ');
+                sb.append(" · ");
             }
             sb.append(trimmed);
         }
 
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    private boolean sameCalcItem(final CalcItemRef left, final CalcItemRef right)
+    {
+        if (left == null || right == null)
+        {
+            return false;
+        }
+        if (left.getItemId() != null && right.getItemId() != null)
+        {
+            return Objects.equals(left.getItemId(), right.getItemId());
+        }
+        return Objects.equals(left.getName(), right.getName());
     }
 
     public void refreshForLogin()
@@ -2781,22 +2992,22 @@ public class CalcPanel extends JPanel
         final List<String> parts = new ArrayList<>();
         if (magicSecateursEnabled && crop != null && crop.getYieldProfile() != null && crop.getYieldProfile().supportsSecateurs())
         {
-            parts.add("Magic secateurs enabled.");
+            parts.add("Secateurs");
         }
         if (farmingCapeEnabled && crop != null && crop.getYieldProfile() != null && crop.getYieldProfile().supportsFarmingCape())
         {
-            parts.add("Farming/max cape enabled.");
+            parts.add("Cape");
         }
         if (attasEnabled && crop != null && crop.getYieldProfile() != null && crop.getYieldProfile().supportsAttas())
         {
-            parts.add("Attas enabled.");
+            parts.add("Attas");
         }
         final int diaryBonus = diaryBonusForPatch(patchId);
         if (diaryBonus > 0)
         {
-            parts.add("Diary bonus +" + diaryBonus + ".");
+            parts.add("Diary +" + diaryBonus);
         }
-        return parts.isEmpty() ? null : String.join(" ", parts);
+        return parts.isEmpty() ? null : "Mods: " + String.join(", ", parts);
     }
 
     private boolean magicSecateursEnabled(final PatchId patchId)
@@ -2840,9 +3051,26 @@ public class CalcPanel extends JPanel
 
     private FarmingLevelState currentFarmingLevelState()
     {
+        final Integer override = selectedFarmingLevelOverride();
+        if (override != null && override > 0)
+        {
+            return new FarmingLevelState(override, override);
+        }
+
+        final Integer liveVisible = currentLiveFarmingLevel();
+        if (liveVisible != null && liveVisible > 0)
+        {
+            return new FarmingLevelState(liveVisible, liveVisible);
+        }
+
+        return new FarmingLevelState(1, 1);
+    }
+
+    private Integer currentLiveFarmingLevel()
+    {
         if (client == null || clientThread == null)
         {
-            return FarmingLevelState.unavailable();
+            return null;
         }
 
         final int[] visibleLevel = {-1};
@@ -2874,16 +3102,17 @@ public class CalcPanel extends JPanel
         catch (final InterruptedException ex)
         {
             Thread.currentThread().interrupt();
-            return FarmingLevelState.unavailable();
+            return null;
+        }
+
+        final int effective = effectiveLevel[0] > 0 ? effectiveLevel[0] : -1;
+        if (effective > 0)
+        {
+            return effective;
         }
 
         final int visible = visibleLevel[0] > 0 ? visibleLevel[0] : -1;
-        final int effective = effectiveLevel[0] > 0 ? effectiveLevel[0] : visible;
-        if (visible <= 0 && effective <= 0)
-        {
-            return FarmingLevelState.unavailable();
-        }
-        return new FarmingLevelState(visible > 0 ? visible : effective, effective > 0 ? effective : visible);
+        return visible > 0 ? visible : null;
     }
 
     private int itemPrice(final int itemId)
@@ -3465,6 +3694,27 @@ public class CalcPanel extends JPanel
         }
     }
 
+    private static final class FarmingLevelDocumentFilter extends DocumentFilter
+    {
+        @Override
+        public void insertString(final FilterBypass fb, final int offset, final String string, final AttributeSet attr) throws BadLocationException
+        {
+            replace(fb, offset, 0, string, attr);
+        }
+
+        @Override
+        public void replace(final FilterBypass fb, final int offset, final int length, final String text, final AttributeSet attrs) throws BadLocationException
+        {
+            final String replacement = text == null ? "" : text;
+            final String current = fb.getDocument().getText(0, fb.getDocument().getLength());
+            final String candidate = current.substring(0, offset) + replacement + current.substring(offset + length);
+            if (candidate.isEmpty() || candidate.matches("\\d{1,3}"))
+            {
+                fb.replace(offset, length, replacement, attrs);
+            }
+        }
+    }
+
     private static final class FarmingLevelState
     {
         private final Integer visibleFarmingLevel;
@@ -3490,6 +3740,7 @@ public class CalcPanel extends JPanel
         private final Map<PatchId, CalcCompostTier> overrideCompostTierByPatch = new LinkedHashMap<>();
         private final Map<String, Map<String, Boolean>> defaultModifierEnabledByGroup = new LinkedHashMap<>();
         private final Map<PatchId, Map<String, Boolean>> overrideModifierEnabledByPatch = new LinkedHashMap<>();
+        private Integer farmingLevelOverride;
     }
 
     private enum CropDisplayKind
